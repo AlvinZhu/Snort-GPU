@@ -3041,7 +3041,7 @@ int acsmPrintSummaryInfo2(void)
 }
 
 
-
+#define ACSMX2S_MAIN
 
 #ifdef ACSMX2S_MAIN
 
@@ -3078,7 +3078,7 @@ main (int argc, char **argv)
       exit (0);
     }
 
-  acsm = acsmNew2 ();
+  acsm = acsmNew2 (NULL, NULL, NULL);
   if( !acsm )
   {
      printf("acsm-no memory\n");
@@ -3149,22 +3149,23 @@ main (int argc, char **argv)
           nc = nocase;
       }
 
-      acsmAddPattern2 (acsm, p, strlen(p), nc, 0, 0,(void*)p, i - 2);
+      acsmAddPattern2 (acsm, p, strlen(p), nc, 0, 0, 0,(void*)p, i - 2);
   }
 
   if(s_verbose)printf("Patterns added\n");
 
-  Print_DFA (acsm);
+  //Print_DFA (acsm);
 
-  acsmCompile2 (acsm);
+  acsmCompile2 (acsm, NULL, NULL);
 
-  Write_DFA(acsm, "acsmx2-snort.dfa") ;
+  //Write_DFA(acsm, "acsmx2-snort.dfa") ;
 
   if(s_verbose) printf("Patterns compiled--written to file.\n");
 
   acsmPrintInfo2 ( acsm );
 
-  acsmSearch2 (acsm, text, strlen (text), MatchFound, (void *)0 );
+  int current_state = 0;
+  acsmSearch2 (acsm, text, strlen (text), MatchFound, (void *)0, &current_state );
 
   acsmFree2 (acsm);
 
