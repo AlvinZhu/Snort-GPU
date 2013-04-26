@@ -1,0 +1,9 @@
+2013-04-18 - Snort 2.9.4.6
+[*] Improvements
+
+* Improved support for DAQ verdicts of whitelist and blacklist for 6in4 and
+  4in6 encapsulated traffic (similar to Teredo & GTP).  See the Snort manual
+  for configuration details.
+
+* Avoid changing the length of IP options in frag3 when receiving duplicate
+  0-offset fragments that have IP options.

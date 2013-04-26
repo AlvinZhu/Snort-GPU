@@ -1,0 +1,62 @@
+File services
+================================================================================
+Hui Cao
+
+##########################################
+# THIS CODE IS STILL EXPERIMENTAL!
+# DO NOT USE IN PRODUCTION ENVIRONMENTS.
+# Please send any issues to the Snort team
+##########################################
+
+Overview
+================================================================================
+With the volume of infected files transferred through network increasing, in 
+network file inspection becomes more and more important. This feature will 
+provide file type identification and file signature creation capabilities. 
+
+Note: no rule options are provided to use file type information and file 
+signature. Future release will include rule options to use file type information.
+
+Supported protocols: HTTP, SMTP, IMAP and POP3.
+Supported file signature calculation: SHA256
+
+Sections:
+    Dependency Requirements
+    Configuration
+
+Dependency Requirements
+================================================================================
+For proper functioning of the file processing:
+ 
+    Stream session tracking must be enabled, i.e. stream5. TCP must be
+    enabled in stream5. The preprocessor requires a session tracker to keep 
+    its data. 
+    
+    IP defragmentation should be enabled, i.e. the frag3 preprocessor should be
+    enabled and configured.
+
+    HTTP, SMTP, IMAP and POP3 must be enabled.
+
+Configuration
+================================================================================
+In this release, file service can only be enabled in debug build. The following 
+options should be included in ./configure:
+
+--enable-debug-msgs --enable-debug
+
+File type identification and file signature calculation can be enabled through 
+the following configuration:
+
+config file: type_id,signature
+
+Enable Openssl support
+
+Openssl provides very efficient SHA calculation. To enable it, the following 
+options should be included in the ./configure
+
+--with-openssl-includes= <path to openssl include> 
+--with-openssl-libraries= <path to openssl lib> 
+
+Example: 
+   --with-openssl-includes=/usr/local/ssl/include 
+   --with-openssl-libraries=/usr/local/ssl/lib
