@@ -161,6 +161,7 @@ typedef struct {
     PMQ q;
     int sizeofstate;
     int compress_states;
+    acstate_t * acsmGStates;
 
 }ACSM_STRUCT2;
 

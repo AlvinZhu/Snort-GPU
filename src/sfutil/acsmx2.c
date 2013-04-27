@@ -146,6 +146,10 @@
 #include "util.h"
 #include "snort_debug.h"
 
+#include "alvincl.h"
+#define MEM_ALIGNMENT			256
+#define DEVICE_TYPE				CL_DEVICE_TYPE_GPU
+
 #define printf LogMessage
 
 #define MEMASSERT(p,s) if(!p){FatalError("ACSM-No Memory: %s!\n",s);}
@@ -160,6 +164,10 @@ static int acsm2_dfa2_memory = 0;
 static int acsm2_dfa4_memory = 0;
 static int acsm2_failstate_memory = 0;
 static int s_verbose=0;
+
+static cl_uint num_platforms;
+static platform_struct *platforms = NULL;
+static cl_uint2 ddex;
 
 typedef struct acsm_summary_s
 {
@@ -2066,6 +2074,24 @@ acsmCompile2(
         acsmBuildMatchStateTrees2(acsm, build_tree, neg_list_func);
     }
 
+	/* Convert [][] to [] */
+	
+	cl_int ret_num;
+	
+	
+	// Alloc aligned acsmGStates
+	ret_num = posix_memalign((void**)&(acsm->acsmGStates), MEM_ALIGNMENT, acsm->sizeofstate * (acsm->acsmAlphabetSize + 2) * acsm->acsmNumStates);
+	if (ret_num)
+	{
+		return -1;
+	}
+	
+	int i;
+	for(i=0; i < acsm->acsmNumStates; i++)
+	{
+		memcpy(&(acsm->acsmGStates[i * (acsm->acsmAlphabetSize + 2)]), acsm->acsmNextState[i], (acsm->sizeofstate * (acsm->acsmAlphabetSize + 2)));
+	}
+	
     return 0;
 }
 
@@ -2585,30 +2611,151 @@ acsmSearchSparseDFA_Full(
         return 0;
 
     state = *current_state;
+	
+	size_t global_work_group_size[1] = { 1 };
+	size_t local_work_group_size[1] = { 1 };
+	
+	cl_int* tindex;
+	cl_int* result;
+	cl_int* presult;
+	
+	cl_event kernel_event;
+	cl_event rst_map_event;
+	cl_event rst_unmap_event;
+	
+	cl_int ret_num;
+	
+	int i;
+	
 
-    switch (acsm->sizeofstate)
+	platforms = getPlatforms(&num_platforms);
+	getDevices(platforms);	
+	ddex = setDevice(platforms, DEVICE_TYPE);	
+	fprintf (stderr,"select device %s \n", platforms[ddex.x].devices[ddex.y].name);	
+	createContext(platforms, ddex);	
+	createProgram(platforms, ddex, "kernel.cl");
+	
+	char kernelname[16];
+	sprintf(kernelname, "kernel_%d", acsm->sizeofstate);
+	//~ fprintf (stderr,"1 %s\n", kernelname);
+	platforms[ddex.x].kernel = clCreateKernel(platforms[ddex.x].program, kernelname, &ret_num);
+	checkResult(platforms, ret_num, "clCreateKernel");		
+	createCommandQueue(platforms, ddex, CL_QUEUE_PROFILING_ENABLE);
+	initMemoryObjects(platforms, ddex, 3);
+
+	
+	ret_num = posix_memalign((void**)&tindex, MEM_ALIGNMENT, (n + 3) * sizeof(int) );
+	checkPointer(platforms, tindex, "tindex");
+	
+	for(i = 0; i < n; i++ )
     {
-        case 1:
-            {
-                uint8_t *ps;
-                uint8_t **NextState = (uint8_t **)acsm->acsmNextState;
-                AC_SEARCH;
-            }
-            break;
-        case 2:
-            {
-                uint16_t *ps;
-                uint16_t **NextState = (uint16_t **)acsm->acsmNextState;
-                AC_SEARCH;
-            }
-            break;
-        default:
-            {
-                acstate_t *ps;
-                acstate_t **NextState = acsm->acsmNextState;
-                AC_SEARCH;
-            }
-            break;
+        tindex[i + 3] = xlatcase[T[i]];
+        //~ fprintf (stderr,"%d %d\n", i+3, tindex[i + 3]);
+    }
+    tindex[0] = acsm->acsmAlphabetSize;
+    tindex[1] = n;
+    tindex[2] = state;
+    
+    //~ fprintf (stderr,"%d %d\n", 0, tindex[0]);
+    //~ fprintf (stderr,"%d %d\n", 1, tindex[1]);
+    //~ fprintf (stderr,"%d %d\n", 2, tindex[2]);
+    
+    //~ int j;
+    //~ for (i= 0; i < acsm->acsmNumStates; i++)
+	//~ {
+		//~ for (j=0; j< 258; j++)
+		//~ {
+			//~ if ((acsm->acsmNextState)[i][j])
+			//~ fprintf (stderr,"%d", (acsm->acsmNextState)[i][j]);
+		//~ }
+		//~ fprintf (stderr,"\n");
+	//~ }
+	//~ fprintf (stderr,"\n");
+	//~ for (i= 0; i < acsm->acsmNumStates; i++)
+	//~ {
+		//~ for (j=0; j< 258; j++)
+		//~ {
+			//~ if ((acsm->acsmGStates)[i * 258 + j])
+			//~ fprintf (stderr,"%d", (acsm->acsmGStates)[i * 258 + j]);
+		//~ }
+		//~ fprintf (stderr,"\n");
+	//~ }
+    
+    platforms[ddex.x].mem_objects[0] = clCreateBuffer(platforms[ddex.x].context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, acsm->sizeofstate * (acsm->acsmAlphabetSize + 2) * acsm->acsmNumStates, acsm->acsmGStates, &ret_num);
+	checkResult(platforms, ret_num, "clCreateBuffer(acsmGStates)");
+	
+	platforms[ddex.x].mem_objects[1] = clCreateBuffer(platforms[ddex.x].context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, (n + 3) * sizeof(int), tindex, &ret_num);
+	checkResult(platforms, ret_num, "clCreateBuffer(tindex)");
+	
+	platforms[ddex.x].mem_objects[2] = clCreateBuffer(platforms[ddex.x].context, CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, (n + 2) * sizeof(int), NULL, &ret_num);
+	checkResult(platforms, ret_num, "clCreateBuffer(result)");
+	
+	ret_num = clSetKernelArg(platforms[ddex.x].kernel, 0, sizeof(cl_mem), &platforms[ddex.x].mem_objects[0]);
+	checkResult(platforms, ret_num, "clSetKernelArg(acsmGStates)");
+	
+	ret_num = clSetKernelArg(platforms[ddex.x].kernel, 1, sizeof(cl_mem), &platforms[ddex.x].mem_objects[1]);
+	checkResult(platforms, ret_num, "clSetKernelArg(tindex)");
+	
+	ret_num = clSetKernelArg(platforms[ddex.x].kernel, 2, sizeof(cl_mem), &platforms[ddex.x].mem_objects[2]);
+	checkResult(platforms, ret_num, "clSetKernelArg(result)");
+
+    //~ switch (acsm->sizeofstate)
+    //~ {
+        //~ case 1:
+            //~ {
+                //~ uint8_t *ps;
+                //~ uint8_t **NextState = (uint8_t **)acsm->acsmNextState;
+                //~ AC_SEARCH;
+            //~ }
+            //~ break;
+        //~ case 2:
+            //~ {
+                //~ uint16_t *ps;
+                //~ uint16_t **NextState = (uint16_t **)acsm->acsmNextState;
+                //~ AC_SEARCH;
+            //~ }
+            //~ break;
+        //~ default:
+            //~ {
+                //~ acstate_t *ps;
+                //~ acstate_t **NextState = acsm->acsmNextState;
+                //~ AC_SEARCH;
+            //~ }
+            //~ break;
+    //~ }
+    //~ fprintf (stderr,"1 \n");	
+	ret_num = clEnqueueNDRangeKernel(platforms[ddex.x].devices[ddex.y].command_queue, platforms[ddex.x].kernel, 1, NULL, global_work_group_size, local_work_group_size, 0, NULL, &kernel_event);
+	checkResult(platforms, ret_num, "clEnqueueNDRangeKernel");	
+	while(clWaitForEvents(1, &kernel_event) != CL_SUCCESS){
+		
+	}
+	//~ fprintf (stderr,"2 \n");
+	
+
+	result = clEnqueueMapBuffer(platforms[ddex.x].devices[ddex.y].command_queue, platforms[ddex.x].mem_objects[2], CL_TRUE, CL_MAP_READ, 0, n * sizeof(int) + 2, 0, NULL, &rst_map_event, &ret_num);
+	checkResult(platforms, ret_num, "clEnqueueMapBuffer(mem_objects[2])");
+	while(clWaitForEvents(1, &rst_map_event) != CL_SUCCESS){
+	
+	}
+
+	state = result[0];
+	//~ fprintf (stderr,"%d %d\n", 0, result[0]);
+	presult = result + 1;
+	while ((*presult) != 0) 
+    { 
+		//~ fprintf (stderr,"%d\n", (*presult));
+		mlist = MatchList[(*presult)]; 
+		if (mlist) 
+		{ 
+			index = T - mlist->n - Tx; 
+			nfound++; 
+			if (Match (mlist->udata, mlist->rule_option_tree, index, data, mlist->neg_list) > 0) 
+			{ 
+				*current_state = state; 
+				return nfound; 
+			} 
+		} 
+		presult ++;
     }
 
     /* Check the last state for a pattern match */
@@ -2625,6 +2772,17 @@ acsmSearchSparseDFA_Full(
     }
 
     *current_state = state;
+    
+    ret_num = clEnqueueUnmapMemObject(platforms[ddex.x].devices[ddex.y].command_queue, platforms[ddex.x].mem_objects[2], result, 0, NULL, &rst_unmap_event);
+	checkResult(platforms, ret_num, "clEnqueueUnmapMemObject(mem_objects)");
+	while(clWaitForEvents(1, &rst_unmap_event) != CL_SUCCESS){
+	
+	}
+    
+    cleanUp(platforms);
+    
+    free((void*)tindex);
+    
     return nfound;
 }
 
@@ -2870,6 +3028,7 @@ acsmFree2(
     AC_FREE(acsm->acsmFailState, 0, ACSM2_MEMORY_TYPE__NONE);
     AC_FREE(acsm->acsmMatchList, 0, ACSM2_MEMORY_TYPE__NONE);
     AC_FREE(acsm, 0, ACSM2_MEMORY_TYPE__NONE);
+    free((void*)acsm->acsmGStates);
 }
 
 int acsmPatternCount2 ( ACSM_STRUCT2 * acsm )
