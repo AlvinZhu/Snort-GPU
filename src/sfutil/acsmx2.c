@@ -2637,7 +2637,6 @@ acsmSearchSparseDFA_Full(
 	
 	char kernelname[16];
 	sprintf(kernelname, "kernel_%d", acsm->sizeofstate);
-	//~ fprintf (stderr,"1 %s\n", kernelname);
 	platforms[ddex.x].kernel = clCreateKernel(platforms[ddex.x].program, kernelname, &ret_num);
 	checkResult(platforms, ret_num, "clCreateKernel");		
 	createCommandQueue(platforms, ddex, CL_QUEUE_PROFILING_ENABLE);
@@ -2650,36 +2649,10 @@ acsmSearchSparseDFA_Full(
 	for(i = 0; i < n; i++ )
     {
         tindex[i + 3] = xlatcase[T[i]];
-        //~ fprintf (stderr,"%d %d\n", i+3, tindex[i + 3]);
     }
     tindex[0] = acsm->acsmAlphabetSize;
     tindex[1] = n;
     tindex[2] = state;
-    
-    //~ fprintf (stderr,"%d %d\n", 0, tindex[0]);
-    //~ fprintf (stderr,"%d %d\n", 1, tindex[1]);
-    //~ fprintf (stderr,"%d %d\n", 2, tindex[2]);
-    
-    //~ int j;
-    //~ for (i= 0; i < acsm->acsmNumStates; i++)
-	//~ {
-		//~ for (j=0; j< 258; j++)
-		//~ {
-			//~ if ((acsm->acsmNextState)[i][j])
-			//~ fprintf (stderr,"%d", (acsm->acsmNextState)[i][j]);
-		//~ }
-		//~ fprintf (stderr,"\n");
-	//~ }
-	//~ fprintf (stderr,"\n");
-	//~ for (i= 0; i < acsm->acsmNumStates; i++)
-	//~ {
-		//~ for (j=0; j< 258; j++)
-		//~ {
-			//~ if ((acsm->acsmGStates)[i * 258 + j])
-			//~ fprintf (stderr,"%d", (acsm->acsmGStates)[i * 258 + j]);
-		//~ }
-		//~ fprintf (stderr,"\n");
-	//~ }
     
     platforms[ddex.x].mem_objects[0] = clCreateBuffer(platforms[ddex.x].context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, acsm->sizeofstate * (acsm->acsmAlphabetSize + 2) * acsm->acsmNumStates, acsm->acsmGStates, &ret_num);
 	checkResult(platforms, ret_num, "clCreateBuffer(acsmGStates)");
@@ -2699,38 +2672,36 @@ acsmSearchSparseDFA_Full(
 	ret_num = clSetKernelArg(platforms[ddex.x].kernel, 2, sizeof(cl_mem), &platforms[ddex.x].mem_objects[2]);
 	checkResult(platforms, ret_num, "clSetKernelArg(result)");
 
-    //~ switch (acsm->sizeofstate)
-    //~ {
-        //~ case 1:
-            //~ {
-                //~ uint8_t *ps;
-                //~ uint8_t **NextState = (uint8_t **)acsm->acsmNextState;
-                //~ AC_SEARCH;
-            //~ }
-            //~ break;
-        //~ case 2:
-            //~ {
-                //~ uint16_t *ps;
-                //~ uint16_t **NextState = (uint16_t **)acsm->acsmNextState;
-                //~ AC_SEARCH;
-            //~ }
-            //~ break;
-        //~ default:
-            //~ {
-                //~ acstate_t *ps;
-                //~ acstate_t **NextState = acsm->acsmNextState;
-                //~ AC_SEARCH;
-            //~ }
-            //~ break;
-    //~ }
-    //~ fprintf (stderr,"1 \n");	
+/*    switch (acsm->sizeofstate)
+    {
+        case 1:
+            {
+                uint8_t *ps;
+                uint8_t **NextState = (uint8_t **)acsm->acsmNextState;
+                AC_SEARCH;
+            }
+            break;
+        case 2:
+            {
+                uint16_t *ps;
+                uint16_t **NextState = (uint16_t **)acsm->acsmNextState;
+                AC_SEARCH;
+            }
+            break;
+        default:
+            {
+                acstate_t *ps;
+                acstate_t **NextState = acsm->acsmNextState;
+                AC_SEARCH;
+            }
+            break;
+    }*/
+	
 	ret_num = clEnqueueNDRangeKernel(platforms[ddex.x].devices[ddex.y].command_queue, platforms[ddex.x].kernel, 1, NULL, global_work_group_size, local_work_group_size, 0, NULL, &kernel_event);
 	checkResult(platforms, ret_num, "clEnqueueNDRangeKernel");	
 	while(clWaitForEvents(1, &kernel_event) != CL_SUCCESS){
 		
 	}
-	//~ fprintf (stderr,"2 \n");
-	
 
 	result = clEnqueueMapBuffer(platforms[ddex.x].devices[ddex.y].command_queue, platforms[ddex.x].mem_objects[2], CL_TRUE, CL_MAP_READ, 0, n * sizeof(int) + 2, 0, NULL, &rst_map_event, &ret_num);
 	checkResult(platforms, ret_num, "clEnqueueMapBuffer(mem_objects[2])");
@@ -2739,11 +2710,9 @@ acsmSearchSparseDFA_Full(
 	}
 
 	state = result[0];
-	//~ fprintf (stderr,"%d %d\n", 0, result[0]);
 	presult = result + 1;
 	while ((*presult) != 0) 
     { 
-		//~ fprintf (stderr,"%d\n", (*presult));
 		mlist = MatchList[(*presult)]; 
 		if (mlist) 
 		{ 
