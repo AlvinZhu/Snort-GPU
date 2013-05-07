@@ -1,0 +1,10 @@
+Welcome to My Repo
+-------------------------------
+Snort GPU
+You can access this repo with SSH or with HTTPS.
+-------------------------------
+automake HOWTO
+EDIT configure.in Makefile.am
+RUN 
+aclocal && libtoolize --force && autoreconf
+automake --add-missing
