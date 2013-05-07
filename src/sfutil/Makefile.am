@@ -17,6 +17,7 @@ libsfutil_a_SOURCES = \
     getopt_long.c getopt.h getopt1.h \
     acsmx.c acsmx.h \
     acsmx2.c acsmx2.h \
+    alvincl.c alvincl.h \
     sfksearch.c sfksearch.h \
     bnfa_search.c bnfa_search.h \
     mpse.c mpse.h \
