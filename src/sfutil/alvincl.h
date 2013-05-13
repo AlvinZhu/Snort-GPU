@@ -25,13 +25,20 @@ typedef struct _platform_struct{
     struct _platform_struct *next;
 } platform_struct;
 
-void cleanUp(platform_struct *platforms);
-inline void checkResult(platform_struct *platforms, cl_int ret_num, const char *name);
-inline void checkPointer(platform_struct *platforms, void *ptr, const char *name);
-platform_struct* getPlatforms(cl_uint *num_platforms);
-void getDevices(platform_struct *platforms);
-cl_uint2 setDevice(platform_struct *platforms, cl_device_type device_type);
-void createContext(platform_struct *platforms, cl_uint2 ddex);
-void createProgram(platform_struct *platforms, cl_uint2 ddex, const char* file_name);
-void createCommandQueue(platform_struct *platforms, cl_uint2 ddex, cl_command_queue_properties properties);
-void initMemoryObjects(platform_struct *platforms, cl_uint2 ddex, cl_uint num_mems);
+typedef struct _alvincl_struct{
+    cl_uint pdex;
+    cl_uint ddex;
+    cl_uint num_platforms;
+    platform_struct *platforms;
+} alvincl_struct;
+
+void cleanUp(alvincl_struct *acls);
+inline void checkResult(alvincl_struct *acls, cl_int ret_num, const char *name);
+inline void checkPointer(alvincl_struct *acls, void *ptr, const char *name);
+void getPlatforms(alvincl_struct *acls);
+void getDevices(alvincl_struct *acls);
+void setDevice(alvincl_struct *acls, cl_device_type device_type);
+void createContext(alvincl_struct *acls);
+void createProgram(alvincl_struct *acls, const char* file_name);
+void createCommandQueue(alvincl_struct *acls, cl_command_queue_properties properties);
+void initMemoryObjects(alvincl_struct *acls, cl_uint num_mems);

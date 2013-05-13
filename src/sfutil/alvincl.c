@@ -7,11 +7,14 @@
 
 #include "alvincl.h"
 
-void cleanUp(platform_struct *platforms) {
-    cl_uint i;
+void cleanUp(alvincl_struct *acls) {
+
+    platform_struct *platforms = acls->platforms;
     platform_struct *ptr = NULL;
 
     platforms = platforms->head;
+
+    cl_uint i;
 
     ptr = platforms;
     while(ptr != NULL){
@@ -126,35 +129,35 @@ const char* oclErrorString(cl_int error) {
 
 }
 
-inline void checkResult(platform_struct *platforms, cl_int ret_num, const char *name) {
+inline void checkResult(alvincl_struct *acls, cl_int ret_num, const char *name) {
     if (ret_num != 0) {
-        fprintf(stderr, "ERROR: %s (%d)\n", name, ret_num);
-        //fprintf(stderr, "ERROR: %s (%s)\n", name, oclErrorString(ciErrNum));
-        cleanUp(platforms);
+        //fprintf(stderr, "ERROR: %s (%d)\n", name, ret_num);
+        fprintf(stderr, "ERROR: %s (%s)\n", name, oclErrorString(ret_num));
+        cleanUp(acls);
         fflush(stderr);
         exit(EXIT_FAILURE);
     }
 }
 
-inline void checkPointer(platform_struct *platforms, void *ptr, const char *name) {
+inline void checkPointer(alvincl_struct *acls, void *ptr, const char *name) {
     if (ptr == NULL) {
         fprintf(stderr, "ERROR: %s (NULL)\n", name);
-        cleanUp(platforms);
+        cleanUp(acls);
         fflush(stderr);
         exit(EXIT_FAILURE);
     }
 }
 
-platform_struct* getPlatforms(cl_uint* num_platforms) {
+void getPlatforms(alvincl_struct *acls) {
     platform_struct *platforms = NULL;
-
+    cl_uint *num_platforms = &(acls->num_platforms);
     cl_platform_id *temp_platforms = NULL;
     size_t size_name;
     cl_int ret_num;
     cl_uint i;
 
     ret_num = clGetPlatformIDs(0, (cl_platform_id *) NULL, num_platforms);
-    checkResult(platforms, ret_num, "clGetPlatformIDs(num_platforms)");
+    checkResult(acls, ret_num, "clGetPlatformIDs(num_platforms)");
 
     if (*num_platforms == 0){
         fprintf(stderr, "num_platforms = 0\n");
@@ -163,25 +166,25 @@ platform_struct* getPlatforms(cl_uint* num_platforms) {
     }
 
     platforms = (platform_struct *) calloc(*num_platforms, sizeof(platform_struct));
-    checkPointer(platforms, platforms, "platforms");
+    checkPointer(acls, platforms, "platforms");
 
     temp_platforms = (cl_platform_id *) malloc(*num_platforms * sizeof(cl_platform_id));
-    checkPointer(platforms, temp_platforms, "temp_platforms");
+    checkPointer(acls, temp_platforms, "temp_platforms");
 
     ret_num = clGetPlatformIDs(*num_platforms, temp_platforms, (cl_uint *) NULL);
-    checkResult(platforms, ret_num, "clGetPlatformIDs(platforms)");
+    checkResult(acls, ret_num, "clGetPlatformIDs(platforms)");
 
     for (i = 0; i < *num_platforms; i++) {
         platforms[i].id = temp_platforms[i];
 
         ret_num = clGetPlatformInfo(platforms[i].id, CL_PLATFORM_NAME, (size_t) 0, NULL, (size_t *) &size_name);
-        checkResult(platforms, ret_num, "clGetPlatformInfo(size_name)");
+        checkResult(acls, ret_num, "clGetPlatformInfo(size_name)");
 
         platforms[i].name = (cl_char *) malloc(size_name + 1);
-        checkPointer(platforms, platforms[i].name, "platform.name");
+        checkPointer(acls, platforms[i].name, "platform.name");
 
         ret_num = clGetPlatformInfo(platforms[i].id, CL_PLATFORM_NAME, size_name, platforms[i].name, (size_t *) NULL);
-        checkResult(platforms, ret_num, "clGetPlatformInfo(platform.name)");
+        checkResult(acls, ret_num, "clGetPlatformInfo(platform.name)");
 
         platforms[i].name[size_name] = '\0';
 
@@ -194,10 +197,11 @@ platform_struct* getPlatforms(cl_uint* num_platforms) {
         }
     }
     free(temp_platforms);
-    return platforms;
+    acls->platforms = platforms;
 }
 
-void getDevices(platform_struct *platforms) {
+void getDevices(alvincl_struct *acls) {
+    platform_struct *platforms = acls->platforms;
     cl_device_id *tmp_devices = NULL;
     size_t size_name;
     cl_int ret_num;
@@ -205,30 +209,30 @@ void getDevices(platform_struct *platforms) {
 
     while(platforms != NULL){
         ret_num = clGetDeviceIDs(platforms->id, CL_DEVICE_TYPE_ALL, 0, NULL, (cl_uint *) &(platforms->num_devices));
-        checkResult(platforms, ret_num, "clGetDeviceIDs(num_devices)");
+        checkResult(acls, ret_num, "clGetDeviceIDs(num_devices)");
 
         platforms->devices = (device_struct *) calloc(platforms->num_devices, sizeof(device_struct));
-        checkPointer(platforms, platforms->devices, "platform.devices");
+        checkPointer(acls, platforms->devices, "platform.devices");
 
         tmp_devices = (cl_device_id *) malloc(platforms->num_devices * sizeof(cl_device_id));
-        checkPointer(platforms, tmp_devices, "tmp_devices");
+        checkPointer(acls, tmp_devices, "tmp_devices");
 
         ret_num = clGetDeviceIDs(platforms->id, CL_DEVICE_TYPE_ALL, platforms->num_devices, tmp_devices, NULL);
-        checkResult(platforms, ret_num, "clGetDeviceIDs(platform.devices)");
+        checkResult(acls, ret_num, "clGetDeviceIDs(platform.devices)");
 
         for (i = 0; i < platforms->num_devices; i++) {
             platforms->devices[i].id = tmp_devices[i];
             ret_num = clGetDeviceInfo(platforms->devices[i].id, CL_DEVICE_TYPE, sizeof(cl_device_type), &platforms->devices[i].type, NULL);
-            checkResult(platforms, ret_num, "clGetDeviceInfo(platform.device.type)");
+            checkResult(acls, ret_num, "clGetDeviceInfo(platform.device.type)");
 
             ret_num = clGetDeviceInfo(platforms->devices[i].id, CL_DEVICE_NAME, (size_t) 0, NULL, (size_t *) &size_name);
-            checkResult(platforms, ret_num, "clGetDeviceInfo(size_name)");
+            checkResult(acls, ret_num, "clGetDeviceInfo(size_name)");
 
             platforms->devices[i].name = (cl_char *) malloc(size_name + 1);
-            checkPointer(platforms, platforms->devices[i].name, "platform.device.name");
+            checkPointer(acls, platforms->devices[i].name, "platform.device.name");
 
             ret_num = clGetDeviceInfo(platforms->devices[i].id, CL_DEVICE_NAME, size_name, platforms->devices[i].name, (size_t *) NULL);
-            checkResult(platforms, ret_num, "clGetDeviceInfo(platform.device.name)");
+            checkResult(acls, ret_num, "clGetDeviceInfo(platform.device.name)");
 
             platforms->devices[i].name[size_name] = '\0';	 
         }
@@ -238,12 +242,13 @@ void getDevices(platform_struct *platforms) {
     }
 }
 
-cl_uint2 setDevice(platform_struct *platforms, cl_device_type device_type) {
+void setDevice(alvincl_struct *acls, cl_device_type device_type) {
     int accel_found = 0;
     int gpu_found = 0; 
     int cpu_found = 0; 
     cl_uint2 ddex;
     cl_uint i, p;
+    platform_struct *platforms = acls->platforms;
     platform_struct *ptr = platforms;
 
 
@@ -292,7 +297,7 @@ cl_uint2 setDevice(platform_struct *platforms, cl_device_type device_type) {
                 }
                 if (!cpu_found) {
                     fprintf(stderr, "no devices of any kind were found on this system.  Leaving...\n"); 
-                    cleanUp(platforms);
+                    cleanUp(acls);
                     fflush(stderr);
                     exit(EXIT_FAILURE);
                 }
@@ -316,16 +321,22 @@ cl_uint2 setDevice(platform_struct *platforms, cl_device_type device_type) {
         }
         if (device_found == 0) {
             fprintf(stderr, "no devices of the requested type were found on this system.  Leaving...\n"); 
-            cleanUp(platforms);
+            cleanUp(acls);
             fflush(stderr);
             exit(EXIT_FAILURE);
         }
     }
 
-    return ddex;
+    acls->pdex = ddex.x;
+    acls->ddex = ddex.y;
 }
 
-void createContext(platform_struct *platforms, cl_uint2 ddex) {
+void createContext(alvincl_struct *acls) {
+    platform_struct * platforms = acls->platforms;
+    cl_uint2 ddex;
+    ddex.x = acls->pdex;
+    ddex.y = acls->ddex;
+
     cl_int ret_num;
 
     cl_context_properties properties[3];
@@ -333,10 +344,15 @@ void createContext(platform_struct *platforms, cl_uint2 ddex) {
     properties[1] = (const cl_context_properties) platforms[ddex.x].id;
     properties[2] = 0;
     platforms[ddex.x].context = clCreateContext((const cl_context_properties *) properties, 1, &(platforms[ddex.x].devices[ddex.y].id), NULL, NULL, &ret_num);
-    checkResult(platforms, ret_num, "clCreateContext");
+    checkResult(acls, ret_num, "clCreateContext");
 }
 
-void createProgram(platform_struct *platforms, cl_uint2 ddex, const char* file_name) {
+void createProgram(alvincl_struct *acls, const char* file_name) {
+    platform_struct * platforms = acls->platforms;
+    cl_uint2 ddex;
+    ddex.x = acls->pdex;
+    ddex.y = acls->ddex;
+
     cl_int ret_num;
     char* source = NULL;
 
@@ -345,19 +361,19 @@ void createProgram(platform_struct *platforms, cl_uint2 ddex, const char* file_n
     FILE *fh = fopen(file_name, "r");
     if (fh == 0) {
         fprintf(stderr, "Couldn't open %s\n", file_name);
-        cleanUp(platforms);
+        cleanUp(acls);
         fflush(stderr);
         exit(EXIT_FAILURE);
     }
 
     stat(file_name, &statbuf);
     source = (char *) malloc(statbuf.st_size + 1);
-    checkPointer(platforms, source, "source");
+    checkPointer(acls, source, "source");
 
     ret_num = fread(source, statbuf.st_size, 1, fh);
     if (ret_num != 1){
         fprintf(stderr, "ERROR: fread (%d)\n", ret_num);
-        cleanUp(platforms);
+        cleanUp(acls);
         fflush(stderr);
         exit(EXIT_FAILURE);
     }
@@ -365,7 +381,7 @@ void createProgram(platform_struct *platforms, cl_uint2 ddex, const char* file_n
     source[statbuf.st_size] = '\0';
 
     platforms[ddex.x].program = clCreateProgramWithSource(platforms[ddex.x].context, 1, (const char **) &source, NULL, &ret_num);
-    checkResult(platforms, ret_num, "clCreateProgramWithSource");
+    checkResult(acls, ret_num, "clCreateProgramWithSource");
 
     ret_num = clBuildProgram(platforms[ddex.x].program, 1, &(platforms[ddex.x].devices[ddex.y].id), "", NULL, NULL);
     if (ret_num != CL_SUCCESS)
@@ -378,23 +394,33 @@ void createProgram(platform_struct *platforms, cl_uint2 ddex, const char* file_n
         fprintf(stderr, "Error in kernel:\n");
         fprintf(stderr, "%s\n", buildLog);
     }
-    checkResult(platforms, ret_num, "clBuildProgram");
+    checkResult(acls, ret_num, "clBuildProgram");
 
     free(source);
 }
 
-void createCommandQueue(platform_struct *platforms, cl_uint2 ddex, cl_command_queue_properties properties) {
+void createCommandQueue(alvincl_struct *acls, cl_command_queue_properties properties) {
+    platform_struct * platforms = acls->platforms;
+    cl_uint2 ddex;
+    ddex.x = acls->pdex;
+    ddex.y = acls->ddex;
+
     cl_int ret_num;
 
     platforms[ddex.x].devices[ddex.y].command_queue = clCreateCommandQueue(platforms[ddex.x].context, platforms[ddex.x].devices[ddex.y].id, properties, &ret_num);
-    checkResult(platforms, ret_num, "clCreateCommandQueue");
+    checkResult(acls, ret_num, "clCreateCommandQueue");
 
 }
 
-void initMemoryObjects(platform_struct *platforms, cl_uint2 ddex, cl_uint num_mems) {
+void initMemoryObjects(alvincl_struct *acls, cl_uint num_mems) {
+    platform_struct * platforms = acls->platforms;
+    cl_uint2 ddex;
+    ddex.x = acls->pdex;
+    ddex.y = acls->ddex;
+
     platforms[ddex.x].num_mems = num_mems;
     platforms[ddex.x].mem_objects = (cl_mem *) calloc(platforms[ddex.x].num_mems, sizeof(cl_mem));
-    checkPointer(platforms, platforms[ddex.x].mem_objects, "platform.mem_objects");
+    checkPointer(acls, platforms[ddex.x].mem_objects, "platform.mem_objects");
 }
 
 
