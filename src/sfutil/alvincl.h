@@ -5,24 +5,24 @@
 #endif
 
 typedef struct _device_struct{
-	cl_device_id id;
-	cl_device_type type;
-	cl_command_queue command_queue;
-	cl_char *name;
+    cl_device_id id;
+    cl_device_type type;
+    cl_command_queue command_queue;
+    cl_char *name;
 } device_struct;
 
 typedef struct _platform_struct{
-	cl_platform_id id;
-	cl_uint num_devices;
-	device_struct *devices;
-	cl_uint num_mems;
-	cl_mem *mem_objects;
-	cl_context context;
-	cl_program program;
-	cl_kernel kernel;
-	cl_char *name;
-	struct _platform_struct *head;
-	struct _platform_struct *next;
+    cl_platform_id id;
+    cl_uint num_devices;
+    device_struct *devices;
+    cl_uint num_mems;
+    cl_mem *mem_objects;
+    cl_context context;
+    cl_program program;
+    cl_kernel kernel;
+    cl_char *name;
+    struct _platform_struct *head;
+    struct _platform_struct *next;
 } platform_struct;
 
 void cleanUp(platform_struct *platforms);

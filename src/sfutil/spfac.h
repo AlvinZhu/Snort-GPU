@@ -1,9 +1,9 @@
 
 /*
-**   SPFAC.H 
-**
-**
-*/
+ **   SPFAC.H 
+ **
+ **
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -18,8 +18,8 @@
 #define SPFAC_H
 
 /*
-*   Prototypes
-*/
+ *   Prototypes
+ */
 
 
 #define SPFAC_ALPHABET_SIZE    256          
@@ -66,10 +66,10 @@ typedef struct  {
 
 
 /*
-* State machine Struct
-*/
+ * State machine Struct
+ */
 typedef struct {
-  
+
     int spfacMaxStates;  
     int spfacNumStates;  
 
@@ -87,22 +87,22 @@ typedef struct {
 }SPFAC_STRUCT;
 
 /*
-*   Prototypes
-*/
+ *   Prototypes
+ */
 SPFAC_STRUCT * spfacNew (void (*userfree)(void *p),
-                       void (*optiontreefree)(void **p),
-                       void (*neg_list_free)(void **p));
+        void (*optiontreefree)(void **p),
+        void (*neg_list_free)(void **p));
 
 int spfacAddPattern( SPFAC_STRUCT * p, unsigned char * pat, int n,
-          int nocase, int offset, int depth, int negative, void * id, int iid );
+        int nocase, int offset, int depth, int negative, void * id, int iid );
 
 int spfacCompile ( SPFAC_STRUCT * spfac,
-             int (*build_tree)(void * id, void **existing_tree),
-             int (*neg_list_func)(void *id, void **list));
+        int (*build_tree)(void * id, void **existing_tree),
+        int (*neg_list_func)(void *id, void **list));
 
 int spfacSearch ( SPFAC_STRUCT * spfac,unsigned char * T, int n, 
-                 int (*Match)(void * id, void *tree, int index, void *data, void *neg_list),
-                 void * data, int* current_state );
+        int (*Match)(void * id, void *tree, int index, void *data, void *neg_list),
+        void * data, int* current_state );
 
 void spfacFree ( SPFAC_STRUCT * spfac );
 int spfacPatternCount ( SPFAC_STRUCT * spfac );
