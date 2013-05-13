@@ -46,6 +46,8 @@
 #include "intel-soft-cpm.h"
 #endif
 
+#include "spfac.h"
+
 #include "profiler.h"
 #ifdef PERF_PROFILING
 #include "snort.h"
@@ -126,6 +128,9 @@ void * mpseNew( int method, int use_global_counter_flag,
             p->obj=IntelPmNew(userfree, optiontreefree, neg_list_free);
             break;
 #endif
+        case MPSE_SPFAC:
+            p->obj = spfacNew(userfree, optiontreefree, neg_list_free);
+            break;
         default:
             /* p is free'd below if no case */
             break;
@@ -215,6 +220,11 @@ void   mpseFree( void * pvoid )
             free(p);
             break;
 #endif
+        case MPSE_SPFAC:
+            if (p->obj)
+                spfacFree((SPFAC_STRUCT *)p->obj);
+            free(p);
+            return;
 
         default:
             return;
@@ -255,6 +265,10 @@ int  mpseAddPattern ( void * pvoid, void * P, int m,
        return IntelPmAddPattern((IntelPm *)p->obj, (unsigned char *)P, m,
                noCase, negative, ID, IID);
 #endif
+     case MPSE_SPFAC:
+       return spfacAddPattern( (SPFAC_STRUCT*)p->obj, (unsigned char *)P, m,
+              noCase, offset, depth, negative, ID, IID );
+
      default:
        return -1;
    }
@@ -306,6 +320,10 @@ int  mpsePrepPatterns  ( void * pvoid,
        return IntelPmFinishGroup((IntelPm *)p->obj, build_tree, neg_list_func);
 #endif
 
+     case MPSE_SPFAC:
+       retv = spfacCompile( (SPFAC_STRUCT*) p->obj, build_tree, neg_list_func );
+     break;
+
      default:
        retv = 1;
      break;
@@ -347,6 +365,9 @@ int mpsePrintInfo( void *pvoid )
      case MPSE_ACSB:
       return acsmPrintDetailInfo2( (ACSM_STRUCT2*) p->obj );
 
+     case MPSE_SPFAC:
+      return spfacPrintDetailInfo( (SPFAC_STRUCT*) p->obj );
+
      default:
        return 1;
    }
@@ -386,13 +407,18 @@ int mpsePrintSummary(int method)
 
             }
             break;
+#ifdef INTEL_SOFT_CPM
+        case MPSE_INTEL_CPM:
+            IntelPmPrintSummary();
+            break;
+#endif
+
+        case MPSE_SPFAC:
+            spfacPrintSummaryInfo();
+            break;
         default:
             break;
     }
-
-#ifdef INTEL_SOFT_CPM
-    IntelPmPrintSummary();
-#endif
 
     return 0;
 }
@@ -458,6 +484,11 @@ int mpseSearch( void *pvoid, const unsigned char * T, int n,
         return ret;
 #endif
 
+     case MPSE_SPFAC:
+      ret = spfacSearch( (SPFAC_STRUCT*) p->obj, (unsigned char *)T, n, action, data, current_state );
+      PREPROC_PROFILE_END(mpsePerfStats);
+      return ret;
+
      default:
        PREPROC_PROFILE_END(mpsePerfStats);
        return 1;
@@ -492,6 +523,8 @@ int mpseGetPatternCount(void *pvoid)
         case MPSE_INTEL_CPM:
             return IntelGetPatternCount((IntelPm *)p->obj);
 #endif
+        case MPSE_SPFAC:
+            return spfacPatternCount((SPFAC_STRUCT*)p->obj);
     }
     return 0;
 }
