@@ -906,7 +906,7 @@ void fpSetDetectSearchOpt(FastPatternConfig *fp, int flag)
 
 /*
    Search method is set using:
-   config detect: search-method ac-bnfa | ac | ac-full | ac-sparsebands | ac-sparse | ac-banded | ac-std | verbose
+   config detect: search-method ac-bnfa | ac | ac-full | ac-sparsebands | ac-sparse | ac-banded | ac-std | spfac | verbose
 */
 int fpSetDetectSearchMethod(FastPatternConfig *fp, char *method)
 {
@@ -985,6 +985,11 @@ int fpSetDetectSearchMethod(FastPatternConfig *fp, char *method)
        LogMessage("   Search-Method = Intel CPM\n");
     }
 #endif
+    else if( !strcasecmp(method,"spfac") )
+    {
+       fp->search_method = MPSE_SPFAC;
+       LogMessage("   Search-Method = SPFAC\n");
+    }
     else
     {
        return -1;
