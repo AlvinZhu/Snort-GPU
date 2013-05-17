@@ -22,6 +22,8 @@
 #define MEM_ALIGNMENT			256
 #define DEVICE_TYPE				CL_DEVICE_TYPE_GPU
 
+#define MAX_PKT_CACHE_SIZE 10485760   //10M
+
 #ifdef DEBUG_SPFAC
 static int max_memory = 0;
 #endif
@@ -29,7 +31,7 @@ static int max_memory = 0;
 struct _k_arg_struct {
     int state;
     int n;
-    unsigned char T[3072];
+    unsigned char T[15728640];
 };
 
 typedef struct _k_arg_struct k_arg_struct;
@@ -542,8 +544,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
 
     memcpy((kas->T), Tx, n * sizeof(unsigned char));
     memset ((kas->T + n * sizeof(unsigned char)), 0, n_cl * 384 - n);
-    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    kas->state = current_state;
+
+    kas->state = *current_state;
     kas->n = n_cl;
 
     ret_num = clEnqueueUnmapMemObject(acls->platforms[acls->pdex].devices[acls->ddex].command_queue, acls->platforms[acls->pdex].mem_objects[1], kas, 0, NULL, &t_unmap_event);
@@ -736,7 +738,7 @@ int spfacPrintSummaryInfo(void)
     return 0;
 }
 
-
+//#define SPFAC_MAIN
 #ifdef SPFAC_MAIN
 
 /*
@@ -754,16 +756,75 @@ MatchFound (void * id, void *tree, int index, void *data, void *neg_list)
     return 0;
 }
 
-
 /*
  *
  */
+int main(){
+    SPFAC_STRUCT * spfac;
+    char *text1;
+    char *text2;
+    char *p = "CCCCC";
+    int nocase = 1;
+    int current_state = 0;
+
+    cl_ulong start, end, use;
+    double band_width;
+
+    int ret_num;
+    int i, j;
+    int *pcs, cs[] = {MAX_PKT_CACHE_SIZE, 1024 * 1024, 1024 * 128, 10240, 1536, 0};
+
+    spfac = spfacNew (NULL, NULL, NULL);
+
+    spfacAddPattern (spfac, p, strlen (p), nocase, 0, 0, 0, (void*)p, 0);
+
+    spfacCompile (spfac, NULL, NULL);
+
+    //Print_DFA(spfac);
+    ret_num = posix_memalign((void**)&(text1), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
+    checkPointer(acls, text1, "text1");
+    memset (text1, 'A', sizeof (char) * MAX_PKT_CACHE_SIZE);
+
+    ret_num = posix_memalign((void**)&(text2), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
+    checkPointer(acls, text2, "text2");
+    memset (text2, 'B', sizeof (char) * MAX_PKT_CACHE_SIZE);
+    
+    j = cs[0];
+    pcs = cs;
+    while( j > 0 ){
+
+        //printf("j=%d \n", j);
+        start = timeNanos();
+        for(i = 0; i < (MAX_PKT_CACHE_SIZE / j * 5); i++){
+            spfacSearch (spfac, text1, sizeof (char) * j, MatchFound, NULL, &current_state);
+            spfacSearch (spfac, text2, sizeof (char) * j, MatchFound, NULL, &current_state);
+            //printf("%d\n", i);
+        }
+        end = timeNanos();
+
+        use = end - start;
+        //printf("%ld \n", use);
+        //band_width = use / 1000000000;
+        //printf("%f \n", band_width);
+        band_width = 100.0 * 8 / use / 1024 * 1000000000;
+        printf("Cache size:%8d Byte\tBandwidth:%f Gb/s\n", j, band_width);
+
+        pcs++;
+        j = *pcs;
+    }
+
+    spfacFree (spfac);
+
+    return 0;
+}
+
     int
-main (int argc, char **argv)
+Tmain (int argc, char **argv)
 {
     int i, nocase = 0;
     SPFAC_STRUCT * spfac;
     char * p;
+    int current_state = 0;
     if (argc < 3)
 
     {
@@ -788,7 +849,7 @@ main (int argc, char **argv)
     }
     spfacCompile (spfac, NULL, NULL);
     //Print_DFA(spfac);
-    spfacSearch (spfac, text, strlen (text), MatchFound, NULL, 0);
+    spfacSearch (spfac, text, strlen (text), MatchFound, NULL, &current_state);
     spfacFree (spfac);
     //printf ("normal pgm end\n");
     return (0);
