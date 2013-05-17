@@ -24,7 +24,7 @@
 
 #define SPFAC_ALPHABET_SIZE    256          
 
-#define SPFAC_FAIL_STATE   -1     
+#define SPFAC_FAIL_STATE   0     
 
 typedef struct _spfac_userdata
 {
@@ -50,21 +50,6 @@ typedef struct _spfac_pattern {
 
 } SPFAC_PATTERN;
 
-
-typedef struct  {    
-
-    /* Next state - based on input character */
-    int      NextState[ SPFAC_ALPHABET_SIZE ];  
-
-    /* Failure state - used while building NFA & DFA  */
-    int      FailState;   
-
-    /* List of patterns that end here, if any */
-    SPFAC_PATTERN *MatchList;   
-
-}SPFAC_STATETABLE; 
-
-
 /*
  * State machine Struct
  */
@@ -74,10 +59,9 @@ typedef struct {
     int spfacNumStates;  
 
     SPFAC_PATTERN    * spfacPatterns;
-    SPFAC_STATETABLE * spfacStateTable;
-
-    int   bcSize;
-    short bcShift[256];
+    int * spfacStateTable;
+    void * mem_object;
+    SPFAC_PATTERN ** MatchList;
 
     int numPatterns;
     void (*userfree)(void *p);
