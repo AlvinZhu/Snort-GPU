@@ -4,8 +4,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "alvincl.h"
+
+cl_ulong timeNanos(){
+#ifdef linux
+    struct timespec tp;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    return (unsigned long long) tp.tv_sec * (1000ULL * 1000ULL * 1000ULL) + (unsigned long long) tp.tv_nsec;
+#else
+    LARGE_INTEGER current;
+    QueryPerformanceCounter(&current);
+    return (unsigned long long)((double)current.QuadPart / m_ticksPerSec * 1e9);
+#endif
+}
 
 void cleanUp(alvincl_struct *acls) {
 

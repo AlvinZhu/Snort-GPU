@@ -32,6 +32,7 @@ typedef struct _alvincl_struct{
     platform_struct *platforms;
 } alvincl_struct;
 
+cl_ulong timeNanos();
 void cleanUp(alvincl_struct *acls);
 inline void checkResult(alvincl_struct *acls, cl_int ret_num, const char *name);
 inline void checkPointer(alvincl_struct *acls, void *ptr, const char *name);
