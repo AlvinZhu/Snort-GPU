@@ -4,42 +4,44 @@
 #include <CL/opencl.h>
 #endif
 
-typedef struct _device_struct{
+typedef struct _acl_device_struct{
+    cl_char *name;
     cl_device_id id;
     cl_device_type type;
     cl_command_queue command_queue;
-    cl_char *name;
-} device_struct;
+} acl_device_struct;
 
-typedef struct _platform_struct{
+typedef struct _acl_platform_struct{
+    cl_char *name;
     cl_platform_id id;
     cl_uint num_devices;
-    device_struct *devices;
+    acl_device_struct *devices;
     cl_uint num_mems;
     cl_mem *mem_objects;
     cl_context context;
     cl_program program;
     cl_kernel kernel;
-    cl_char *name;
-    struct _platform_struct *head;
-    struct _platform_struct *next;
-} platform_struct;
+    struct _acl_platform_struct *head;
+    struct _acl_platform_struct *next;
+} acl_platform_struct;
 
-typedef struct _alvincl_struct{
-    cl_uint pdex;
-    cl_uint ddex;
-    cl_uint num_platforms;
-    platform_struct *platforms;
-} alvincl_struct;
+typedef struct _acl_struct{
+    acl_platform_struct *platform;
+    acl_device_struct *device;
+    cl_uint work_dim;
+    size_t *global_work_size;
+    size_t *local_work_size;
+} acl_struct;
 
-cl_ulong timeNanos();
-void cleanUp(alvincl_struct *acls);
-inline void checkResult(alvincl_struct *acls, cl_int ret_num, const char *name);
-inline void checkPointer(alvincl_struct *acls, void *ptr, const char *name);
-void getPlatforms(alvincl_struct *acls);
-void getDevices(alvincl_struct *acls);
-void setDevice(alvincl_struct *acls, cl_device_type device_type);
-void createContext(alvincl_struct *acls);
-void createProgram(alvincl_struct *acls, const char* file_name);
-void createCommandQueue(alvincl_struct *acls, cl_command_queue_properties properties);
-void initMemoryObjects(alvincl_struct *acls, cl_uint num_mems);
+cl_ulong aclTimeNanos();
+void aclCleanUp(acl_struct *acl_s);
+inline void aclCheckResult(acl_struct *acl_s, cl_int ret_num, const char *name);
+inline void aclCheckPointer(acl_struct *acl_s, void *ptr, const char *name);
+void aclGetPlatforms(acl_struct *acl_s);
+void aclGetDevices(acl_struct *acl_s);
+void aclSetDevice(acl_struct *acl_s, cl_device_type device_type);
+void aclCreateContext(acl_struct *acl_s);
+void aclCreateProgram(acl_struct *acl_s, const char *file_name);
+void aclCreateKernel(acl_struct *acl_s, const char *kernel_name);
+void aclCreateCommandQueue(acl_struct *acl_s, cl_command_queue_properties properties);
+void aclInitMemoryObjects(acl_struct *acl_s, cl_uint num_mems);

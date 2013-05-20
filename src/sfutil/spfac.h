@@ -10,9 +10,6 @@
 #endif
 
 #include "sf_types.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #ifndef SPFAC_H
 #define SPFAC_H
@@ -26,48 +23,43 @@
 
 #define SPFAC_FAIL_STATE   0     
 
-typedef struct _spfac_userdata
-{
+typedef struct _spfac_userdata{
     uint32_t ref_count;
     void *id;
 
 } SPFAC_USERDATA;
 
-typedef struct _spfac_pattern {      
-
-    struct  _spfac_pattern *next;
-    unsigned char         *patrn;
-    unsigned char         *casepatrn;
-    int      n;
-    int      nocase;
-    int      offset;
-    int      depth;
-    int      negative;
+typedef struct _spfac_pattern{
+    struct _spfac_pattern *next;
+    unsigned char *patrn;
+    unsigned char *casepatrn;
+    int n;
+    int nocase;
+    int offset;
+    int depth;
+    int negative;
     SPFAC_USERDATA *udata;
-    int      iid;
-    void   * rule_option_tree;
-    void   * neg_list;
-
+    int iid;
+    void *rule_option_tree;
+    void *neg_list;
 } SPFAC_PATTERN;
 
 /*
  * State machine Struct
  */
-typedef struct {
-
+typedef struct{
     int spfacMaxStates;  
     int spfacNumStates;  
 
-    SPFAC_PATTERN    * spfacPatterns;
-    int * spfacStateTable;
-    void * mem_object;
-    SPFAC_PATTERN ** MatchList;
+    SPFAC_PATTERN *spfacPatterns;
+    int *spfacStateTable;
+    cl_mem mem_object;
+    SPFAC_PATTERN **MatchList;
 
     int numPatterns;
     void (*userfree)(void *p);
     void (*optiontreefree)(void **p);
     void (*neg_list_free)(void **p);
-
 }SPFAC_STRUCT;
 
 /*
