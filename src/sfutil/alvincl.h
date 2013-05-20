@@ -1,3 +1,6 @@
+#ifndef __ALVINCL_H
+#define __ALVINCL_H
+
 #ifdef __APPLE__
 #include <OpenCL/opcncl.h>
 #else
@@ -45,3 +48,5 @@ void aclCreateProgram(acl_struct *acl_s, const char *file_name);
 void aclCreateKernel(acl_struct *acl_s, const char *kernel_name);
 void aclCreateCommandQueue(acl_struct *acl_s, cl_command_queue_properties properties);
 void aclInitMemoryObjects(acl_struct *acl_s, cl_uint num_mems);
+
+#endif /* __ALVINCL_H */

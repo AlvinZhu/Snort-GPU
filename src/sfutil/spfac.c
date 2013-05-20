@@ -520,8 +520,6 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     size_t global_work_group_size[1] = { 384 };
     size_t local_work_group_size[1] = { 64 };
 
-    cl_event kernel_event;
-
     cl_int ret_num;
     //
     kas = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, (n_cl * 384 + 4) * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
@@ -541,10 +539,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     aclCheckResult(acls, ret_num, "clSetKernelArg(3)");
 
     //
-    ret_num = clEnqueueNDRangeKernel(acls->device->command_queue, acls->platform->kernel, 1, NULL, global_work_group_size, local_work_group_size, 0, NULL, &kernel_event);
+    ret_num = clEnqueueNDRangeKernel(acls->device->command_queue, acls->platform->kernel, 1, NULL, global_work_group_size, local_work_group_size, 0, NULL, NULL);
     aclCheckResult(acls, ret_num, "clEnqueueNDRangeKernel");
-    while(clWaitForEvents(1, &kernel_event) != CL_SUCCESS){
-    }
 
     //
     result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[2], CL_TRUE, CL_MAP_WRITE, 0, (11) * sizeof(int), 0, NULL, NULL, &ret_num);

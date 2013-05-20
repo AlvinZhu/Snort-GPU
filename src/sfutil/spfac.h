@@ -11,6 +11,8 @@
 
 #include "sf_types.h"
 
+#include "alvincl.h"
+
 #ifndef SPFAC_H
 #define SPFAC_H
 
