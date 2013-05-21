@@ -1,10 +1,14 @@
-__kernel void spfac_kernel_1(const __global unsigned char *xlatcase, __global int *result, const __global unsigned char *T, const __global int *spfacStateTable) {
+__kernel __attribute__((reqd_work_group_size(64, 1, 1))) void spfac_kernel_1(__constant unsigned char *xlatcase, __global int *result, const __global unsigned char *T, const __global int *spfacStateTable) {
+
 	int tid = get_global_id(0);
     int pstate, state;
 
 	int nm = 0;
 	unsigned char UT;
 	
+    prefetch((T + tid), 96);
+    //prefetch(spfacStateTable, 258);
+
     int i;
     state = 0;
     for( i = 4 * tid; ; i++ ){
