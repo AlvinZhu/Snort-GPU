@@ -97,29 +97,31 @@ static void alvinclInit(){
         aclCreateKernel(acls, "spfac_kernel_1");
         aclCreateCommandQueue(acls, CL_QUEUE_PROFILING_ENABLE);
         aclInitMemoryObjects(acls, 2);
-
+        //
         acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
         
         acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
-
-        clxlatcase = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[0], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+        //
+        clxlatcase = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[0], CL_TRUE, CL_MAP_WRITE, 0, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+        //clxlatcase = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[0], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[0])");
 
         memcpy(clxlatcase, xlatcase, SPFAC_ALPHABET_SIZE * sizeof(unsigned char));
 
         ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[0], clxlatcase, 0, NULL, NULL);
-        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
-
-        result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[0])");
+        //
+        result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+        //result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
 
         memset (result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
 
         ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[1], result, 0, NULL, NULL);
         aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
-
+        //
         ret_num = clSetKernelArg(acls->platform->kernel, 0, sizeof(cl_mem), &(acls->platform->mem_objects[0]));
         aclCheckResult(acls, ret_num, "clSetKernelArg(0)");
         ret_num = clSetKernelArg(acls->platform->kernel, 1, sizeof(cl_mem), &(acls->platform->mem_objects[1]));
@@ -253,7 +255,7 @@ AddMatchListEntry (SPFAC_STRUCT * spfac, int state, SPFAC_PATTERN * px)
     memcpy (p, px, sizeof (SPFAC_PATTERN));
     p->next = spfac->MatchList[state];
     spfac->MatchList[state] = p;
-    spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 2) + 256] = 1;
+    spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 1) + 256] = 1;
 }
 
 /*
@@ -288,7 +290,7 @@ AddPatternStates (SPFAC_STRUCT * spfac, SPFAC_PATTERN * p)
      */
     for (; n > 0; pattern++, n--)
     {
-        next = spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 2) + *pattern];
+        next = spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 1) + *pattern];
         if (next == SPFAC_FAIL_STATE)
             break;
         state = next;
@@ -300,7 +302,7 @@ AddPatternStates (SPFAC_STRUCT * spfac, SPFAC_PATTERN * p)
     for (; n > 0; pattern++, n--)
     {
         spfac->spfacNumStates++;
-        spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 2) + *pattern] 
+        spfac->spfacStateTable[state * (SPFAC_ALPHABET_SIZE + 1) + *pattern] 
             = spfac->spfacNumStates;
         state = spfac->spfacNumStates;
     }
@@ -413,6 +415,8 @@ spfacCompile (SPFAC_STRUCT * spfac,
     SPFAC_PATTERN * plist;
     SPFAC_PATTERN * px;
 
+    int *ptr_map;
+
     cl_int ret_num;
 
     /* Init a Queue */
@@ -426,11 +430,11 @@ spfacCompile (SPFAC_STRUCT * spfac,
     {
         spfac->spfacMaxStates += plist->n;
     }
-    //spfac->spfacStateTable = (unsigned int*) spfacMalloc (sizeof (unsigned int) * (SPFAC_ALPHABET_SIZE + 2) * spfac->spfacMaxStates);
-    ret_num = posix_memalign((void**)&(spfac->spfacStateTable), MEM_ALIGNMENT, sizeof (int) * (SPFAC_ALPHABET_SIZE + 2) * spfac->spfacMaxStates);
+    //spfac->spfacStateTable = (unsigned int*) spfacMalloc (sizeof (unsigned int) * (SPFAC_ALPHABET_SIZE + 1) * spfac->spfacMaxStates);
+    ret_num = posix_memalign((void**)&(spfac->spfacStateTable), MEM_ALIGNMENT, sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * spfac->spfacMaxStates);
     aclCheckPointer(acls, spfac->spfacStateTable, "spfac->spfacStateTable");
     memset (spfac->spfacStateTable, 0,
-            sizeof (int) * (SPFAC_ALPHABET_SIZE + 2) * spfac->spfacMaxStates);
+            sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * spfac->spfacMaxStates);
     spfac->MatchList =
         (SPFAC_PATTERN**) spfacMalloc (sizeof(SPFAC_PATTERN*) * spfac->spfacMaxStates);
     memset (spfac->MatchList, 0, sizeof(SPFAC_PATTERN*) * spfac->spfacMaxStates);
@@ -441,9 +445,9 @@ spfacCompile (SPFAC_STRUCT * spfac,
     /* Initialize all States NextStates to FAILED */
     for (k = 0; k < spfac->spfacMaxStates; k++)
     {
-        for (i = 0; i < SPFAC_ALPHABET_SIZE + 2; i++)
+        for (i = 0; i < SPFAC_ALPHABET_SIZE + 1; i++)
         {
-            spfac->spfacStateTable[k * (SPFAC_ALPHABET_SIZE + 2) + i] = SPFAC_FAIL_STATE;
+            spfac->spfacStateTable[k * (SPFAC_ALPHABET_SIZE + 1) + i] = SPFAC_FAIL_STATE;
         }
     }
 
@@ -463,7 +467,7 @@ spfacCompile (SPFAC_STRUCT * spfac,
             while(queue_count (queue) > 0){
                 r = queue_remove (queue);
                 for(i = 0; i < SPFAC_ALPHABET_SIZE; i++){
-                    if((s = spfac->spfacStateTable[r * 258 + i]) != 0){
+                    if((s = spfac->spfacStateTable[r * 257 + i]) != 0){
                         queue_add (queue, s);
                         if(spfac->MatchList[s] != NULL){
                             px = CopyMatchListEntry (plist);
@@ -481,8 +485,17 @@ spfacCompile (SPFAC_STRUCT * spfac,
     {
         spfacBuildMatchStateTrees(spfac, build_tree, neg_list_func);
     }
-    spfac->mem_object = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, sizeof (int) * (SPFAC_ALPHABET_SIZE + 2) * spfac->spfacMaxStates, spfac->spfacStateTable, &ret_num);
+    spfac->mem_object = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * (spfac->spfacNumStates + 1), NULL, &ret_num);
     aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
+    
+    ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object, CL_TRUE, CL_MAP_WRITE, 0, sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * (spfac->spfacNumStates + 1), 0, NULL, NULL, &ret_num);
+    //ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * (spfac->spfacNumStates + 1), 0, NULL, NULL, &ret_num);
+    aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(spfac->mem_object)");
+
+    memcpy(ptr_map, spfac->spfacStateTable, sizeof (int) * (SPFAC_ALPHABET_SIZE + 1) * (spfac->spfacNumStates + 1));
+
+    ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, spfac->mem_object, ptr_map, 0, NULL, NULL);
+    aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(spfac->mem_object)");
 
     /* Clean up the queue */
     queue_free (queue);
@@ -667,12 +680,11 @@ static void Print_DFA( SPFAC_STRUCT * spfac )
     int mc;
     SPFAC_PATTERN * mlist=0;
 
-    for (k = 0; k < spfac->spfacMaxStates; k++)
-    {
+    for (k = 0; k < spfac->spfacMaxStates; k++){
         printf("%d\t", k);
-        for (i = 0; i < SPFAC_ALPHABET_SIZE + 2; i++)
+        for (i = 0; i < SPFAC_ALPHABET_SIZE + 1; i++)
         {
-            next = spfac->spfacStateTable[k * 258 + i];
+            next = spfac->spfacStateTable[k * 257 + i];
 
             if( next !=  SPFAC_FAIL_STATE )
             {
@@ -695,7 +707,7 @@ static void Print_DFA( SPFAC_STRUCT * spfac )
         }
         printf("\n");
     }
-
+    printf("Num of states:%d\n", spfac->spfacNumStates);
 }
 
 
@@ -857,7 +869,7 @@ mTain (int argc, char **argv)
     }
 
     spfacCompile (spfac, NULL, NULL);
-    //Print_DFA(spfac);
+    Print_DFA(spfac);
     spfacSearch (spfac, text, sizeof (char) * MAX_PKT_CACHE_SIZE, MatchFound, NULL, &current_state);
     spfacFree (spfac);
     //printf ("normal pgm end\n");
