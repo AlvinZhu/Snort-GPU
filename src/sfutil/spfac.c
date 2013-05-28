@@ -556,13 +556,10 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
 {
     //int state = 0;
     SPFAC_PATTERN * mlist;
-    //unsigned char *Tend;
-    //int * StateTable = spfac->spfacStateTable;
     int nfound = 0, nr;
     SPFAC_PATTERN ** MatchList = spfac->MatchList;
-    //unsigned char *T;
-    //int n_cl = (n % 64) ? (n / 64 + 1) * 64 : (n / 64) * 64;
-    int n_cl = n / 32;
+    int n_cl = (n % 64) ? (n / 64 + 1) * 64 : (n / 64) * 64;
+    n_cl /= 32;
     int * result;
     int * presult;
     int index;
@@ -789,7 +786,7 @@ int spfacPrintSummaryInfo(void)
     return 0;
 }
 
-//#define SPFAC_MAIN
+#define SPFAC_MAIN
 #ifdef SPFAC_MAIN
 
 /*
@@ -814,7 +811,8 @@ int mainP(){
     SPFAC_STRUCT * spfac;
     char *text1;
     char *text2;
-    char *p = "CCCCC";
+    char *p1 = "AAAC";
+    char *p2 = "BBBD";
     int nocase = 1;
     int current_state = 0;
 
@@ -828,11 +826,11 @@ int mainP(){
 
     spfac = spfacNew (NULL, NULL, NULL);
 
-    spfacAddPattern (spfac, p, strlen (p), nocase, 0, 0, 0, (void*)p, 0);
+    spfacAddPattern (spfac, p1, strlen (p1), nocase, 0, 0, 0, (void*)p1, 0);
+    spfacAddPattern (spfac, p2, strlen (p2), nocase, 0, 0, 0, (void*)p2, 0);
 
     spfacCompile (spfac, NULL, NULL);
 
-    //Print_DFA(spfac)
     ret_num = posix_memalign((void**)&(text1), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
     aclCheckPointer(acls, text1, "text1");
     memset (text1, 'A', sizeof (char) * MAX_PKT_CACHE_SIZE);
@@ -843,21 +841,15 @@ int mainP(){
     
     j = cs[0];
     pcs = cs;
-    while( j > 0 ){
-
-        //printf("j=%d \n", j);
+    while ( j > 0 ){
         start = aclTimeNanos();
         for(i = 0; i < (MAX_PKT_CACHE_SIZE / j * 5); i++){
             spfacSearch (spfac, text1, sizeof (char) * j, MatchFound, NULL, &current_state);
             spfacSearch (spfac, text2, sizeof (char) * j, MatchFound, NULL, &current_state);
-            //printf("%d\n", i);
         }
         end = aclTimeNanos();
-
         use = end - start;
-        //printf("%ld \n", use);
-        //band_width = use / 1000000000;
-        //printf("%f \n", band_width);
+
         band_width = 10.0 * 8 / 1024 * MAX_PKT_CACHE_SIZE / 1024 / 1024 / use * 1000000000;
         printf("Cache size:%8d Byte\tBandwidth:%f Gb/s\n", j, band_width);
 
@@ -878,8 +870,8 @@ int main (int argc, char **argv)
     char * text;
     int ret_num;
     int current_state = 0;
-    if (argc < 2)
-    {
+
+    if (argc < 2){
         fprintf (stderr, "Usage: %s -p\n", argv[0]);
         fprintf (stderr, "Usage: %s text [-n] pattern [patterns...]\n", argv[0]);
         exit (0);
@@ -900,8 +892,7 @@ int main (int argc, char **argv)
     memset (text, 0, sizeof (char) * MAX_PKT_CACHE_SIZE);
     strcpy (text, argv[1]);
 
-    for (i = 2; i < argc; i++)
-    {
+    for (i = 2; i < argc; i++){
         if (argv[i][0] == '-')
             continue;
         p = argv[i];
@@ -914,7 +905,6 @@ int main (int argc, char **argv)
     Print_DFA(spfac);
     spfacSearch (spfac, text, sizeof (char) * MAX_PKT_CACHE_SIZE, MatchFound, NULL, &current_state);
     spfacFree (spfac);
-    //printf ("normal pgm end\n");
     return (0);
 }
 #endif /*  */

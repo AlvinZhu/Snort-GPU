@@ -8,12 +8,10 @@ __kernel __attribute__((reqd_work_group_size(64, 1, 1))) void spfac_kernel_1(__c
 	int state_index;
 	int tid = get_global_id(0);
 
-    // unroll size 2^5
-    tid = tid << 5;	
-    prefetch((text + tid), 32);
-    //prefetch(state_table, 258);
-
     int i, j;
+
+    tid *= UNROLL_SIZE;	
+    prefetch((text + tid), UNROLL_SIZE);
 
 #pragma unroll UNROLL_SIZE
     for (j = 0; j < UNROLL_SIZE; j++){
@@ -31,7 +29,6 @@ __kernel __attribute__((reqd_work_group_size(64, 1, 1))) void spfac_kernel_1(__c
                 result[2 * num_match + 2] = i;
                 break;
             }
-
         }
     }
 }
