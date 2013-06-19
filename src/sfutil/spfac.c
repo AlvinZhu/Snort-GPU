@@ -1,14 +1,17 @@
 /*
+ **     Secure Parallel Failureless-AC Alogithm
+ **     Multi-Pattern Search Engine
  **
- **
- **
+ **     Author: Alvin Zhu (alvin.zhuge@gmail.com)
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <getopt.h>
 
+#include <time.h>
 #include "alvincl.h"
 
 #ifdef HAVE_CONFIG_H
@@ -20,7 +23,9 @@
 #include "snort_debug.h"
 
 #define MEM_ALIGNMENT			256
-#define DEVICE_TYPE				CL_DEVICE_TYPE_GPU
+//#define DEVICE_TYPE				CL_DEVICE_TYPE_GPU
+static cl_device_type DEVICE_TYPE = CL_DEVICE_TYPE_GPU;
+static int KERNEL_ID = 1;
 
 #define MAX_PKT_CACHE_SIZE 10485760   //10M
 
@@ -82,7 +87,8 @@ ConvertCaseEx (unsigned char *d, unsigned char *s, int m)
 }
 
 
-static void alvinclInit(){
+static void alvinclInit()
+{
     cl_int ret_num;
     int * result;
     unsigned char *clxlatcase = xlatcase;
@@ -94,37 +100,91 @@ static void alvinclInit(){
         aclSetDevice(acls, DEVICE_TYPE);
         aclCreateContext(acls);
         aclCreateProgram(acls, "kernel.cl");
-        aclCreateKernel(acls, "spfac_kernel_1");
+        
+        char kernelname[1024];
+        sprintf(kernelname, "spfac_kernel_%d", KERNEL_ID);
+        aclCreateKernel(acls, kernelname);
+
         aclCreateCommandQueue(acls, CL_QUEUE_PROFILING_ENABLE);
         aclInitMemoryObjects(acls, 2);
         //
-        acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
-        
-        acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
-        //
-        clxlatcase = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[0], CL_TRUE, CL_MAP_WRITE, 0, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
-        //clxlatcase = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[0], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[0])");
+        if (strcmp(acls->platform->name, "AMD Accelerated Parallel Processing") == 0){
+            //printf("AMD\n");
+            acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context,
+                    CL_MEM_READ_ONLY | CL_MEM_USE_PERSISTENT_MEM_AMD, 
+                    SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
 
-        memcpy(clxlatcase, xlatcase, SPFAC_ALPHABET_SIZE * sizeof(unsigned char));
+            acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context,
+                    CL_MEM_READ_WRITE | CL_MEM_USE_PERSISTENT_MEM_AMD, 
+                    (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
 
-        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[0], clxlatcase, 0, NULL, NULL);
-        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[0])");
-        //
-        result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
-        //result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
+            clxlatcase = clEnqueueMapBuffer(acls->device->command_queue,
+                    acls->platform->mem_objects[0],
+                    CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
+                    SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[0])");
 
-        memset (result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
-        
-        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[1], result, 0, NULL, NULL);
-        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
-        //
-        ret_num = clSetKernelArg(acls->platform->kernel, 0, sizeof(cl_mem), &(acls->platform->mem_objects[0]));
+            memcpy(clxlatcase, xlatcase, SPFAC_ALPHABET_SIZE * sizeof(unsigned char));
+
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    acls->platform->mem_objects[0], clxlatcase, 0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[0])");
+
+            result = clEnqueueMapBuffer(acls->device->command_queue,
+                    acls->platform->mem_objects[1],
+                    CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
+                    (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
+
+            memset (result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
+
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    acls->platform->mem_objects[1], result, 0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
+        } else {
+            acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context,
+                    CL_MEM_READ_ONLY, 
+                    SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
+
+            acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context,
+                    CL_MEM_READ_WRITE, 
+                    (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
+
+            clxlatcase = clEnqueueMapBuffer(acls->device->command_queue,
+                    acls->platform->mem_objects[0],
+                    CL_TRUE, CL_MAP_WRITE, 0,
+                    SPFAC_ALPHABET_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[0])");
+
+            memcpy(clxlatcase, xlatcase, SPFAC_ALPHABET_SIZE * sizeof(unsigned char));
+
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    acls->platform->mem_objects[0], clxlatcase, 0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[0])");
+
+            result = clEnqueueMapBuffer(acls->device->command_queue,
+                    acls->platform->mem_objects[1],
+                    CL_TRUE, CL_MAP_WRITE, 0,
+                    (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+            aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
+
+            memset (result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
+
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    acls->platform->mem_objects[1], result, 0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
+        }
+
+        ret_num = clSetKernelArg(acls->platform->kernel, 0, sizeof(cl_mem),
+                &(acls->platform->mem_objects[0]));
         aclCheckResult(acls, ret_num, "clSetKernelArg(0)");
-        ret_num = clSetKernelArg(acls->platform->kernel, 1, sizeof(cl_mem), &(acls->platform->mem_objects[1]));
+        
+        ret_num = clSetKernelArg(acls->platform->kernel, 1, sizeof(cl_mem),
+                &(acls->platform->mem_objects[1]));
         aclCheckResult(acls, ret_num, "clSetKernelArg(1)");
     }
 }
@@ -251,8 +311,6 @@ queue_free (QUEUE * s)
 AddMatchListEntry (SPFAC_STRUCT * spfac, int state, SPFAC_PATTERN * px)
 {
     SPFAC_PATTERN * p;
-
-    int i;
 
     p = (SPFAC_PATTERN *) spfacMalloc (sizeof (SPFAC_PATTERN));
     memcpy (p, px, sizeof (SPFAC_PATTERN));
@@ -524,13 +582,31 @@ spfacCompile (SPFAC_STRUCT * spfac,
         spfacBuildMatchStateTrees(spfac, build_tree, neg_list_func);
     }
     //
-    spfac->mem_object = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
-    aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
-    
-    ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object, CL_TRUE, CL_MAP_WRITE, 0, sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), 0, NULL, NULL, &ret_num);
-    //ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), 0, NULL, NULL, &ret_num);
-    aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(spfac->mem_object)");
+    if (strcmp(acls->platform->name, "AMD Accelerated Parallel Processing") == 0){
+        //printf("AMD\n");
 
+        spfac->mem_object = clCreateBuffer(acls->platform->context,
+                CL_MEM_READ_ONLY | CL_MEM_USE_PERSISTENT_MEM_AMD,
+                sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
+
+        ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object,
+                CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, 
+                sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1),
+                0, NULL, NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(spfac->mem_object)");
+    } else {
+        spfac->mem_object = clCreateBuffer(acls->platform->context,
+                CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
+                sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
+
+        ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object,
+                CL_TRUE, CL_MAP_WRITE, 0,
+                sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1),
+                0, NULL, NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(spfac->mem_object)");
+    }
     memcpy(ptr_map, spfac->spfacStateTable, sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1));
 
     ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, spfac->mem_object, ptr_map, 0, NULL, NULL);
@@ -558,7 +634,7 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     SPFAC_PATTERN * mlist;
     int nfound = 0, nr;
     SPFAC_PATTERN ** MatchList = spfac->MatchList;
-    int n_cl = (n % 64) ? (n / 64 + 1) * 64 : (n / 64) * 64;
+    int n_cl = (n % 64) ? (n / 64 + 1) * 64 : n;
     n_cl /= 32;
     int * result;
     int * presult;
@@ -570,7 +646,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     cl_int ret_num;
     //
     
-    mem_object = clCreateBuffer(acls->platform->context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, sizeof(unsigned char) * n, Tx, &ret_num);
+    mem_object = clCreateBuffer(acls->platform->context,
+            CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, sizeof(unsigned char) * n, Tx, &ret_num);
     aclCheckResult(acls, ret_num, "clCreateBuffer(T)");
 
     ret_num = clSetKernelArg(acls->platform->kernel, 2, sizeof(cl_mem), &(mem_object));
@@ -595,24 +672,28 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
 
     //
 
-    ret_num = clEnqueueNDRangeKernel(acls->device->command_queue, acls->platform->kernel, 1, NULL, global_work_group_size, local_work_group_size, 0, NULL, NULL);
+    ret_num = clEnqueueNDRangeKernel(acls->device->command_queue, acls->platform->kernel,
+            1, NULL, global_work_group_size, local_work_group_size, 0, NULL, NULL);
     aclCheckResult(acls, ret_num, "clEnqueueNDRangeKernel");
     
 
     //
-    result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_WRITE, 0, (11) * sizeof(int), 0, NULL, NULL, &ret_num);
-    aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
+    result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1],
+            CL_TRUE, CL_MAP_WRITE, 0, (11) * sizeof(int), 0, NULL, NULL, &ret_num);
+    aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1]).2");
     //
     
     //printf("m:%d\n", *result);
     nr = *result;
     if (nr > 5){
         *result = 0;
-        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[1], result, 0, NULL, NULL);
+        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                acls->platform->mem_objects[1], result, 0, NULL, NULL);
         aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
 
-        result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1], CL_TRUE, CL_MAP_READ, 0, (nr * 2 + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1])");
+        result = clEnqueueMapBuffer(acls->device->command_queue, acls->platform->mem_objects[1],
+                CL_TRUE, CL_MAP_READ, 0, (nr * 2 + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(mem_objects[1].3)");
     }
     
 
@@ -633,7 +714,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
         nr--;
     }
     //
-    ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[1], result, 0, NULL, NULL);
+    ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, acls->platform->mem_objects[1],
+            result, 0, NULL, NULL);
     aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
     
     //clFinish(acls->device->command_queue);
@@ -790,11 +872,6 @@ int spfacPrintSummaryInfo(void)
 #ifdef SPFAC_MAIN
 
 /*
- *  Text Data Buffer
- */
-//unsigned char text[512];
-
-/*
  *    A Match is found
  */
     int
@@ -804,108 +881,190 @@ MatchFound (void * id, void *tree, int index, void *data, void *neg_list)
     return 0;
 }
 
+MatchFound2 (void * id, void *tree, int index, void *data, void *neg_list)
+{
+    //fprintf (stdout, "%s\n", (char *) id);
+    return 0;
+}
+
+void usage()
+{
+    printf("Usage: --help\n");
+    printf("   or: --version\n");
+    printf("   or: --mode=test text pattern [pattern...]\n");
+    printf("   or: --mode=profiling\n");
+    printf("       [--device=cpu|gpu] [--kernel=NUM] [--random]\n");
+    printf("       [--cache-size=SIZE] [--num-cache=NUM] [--patterns=NUM]\n");
+}
 /*
  *
  */
-int mainP(){
+int main(int argc, char **argv){
     SPFAC_STRUCT * spfac;
-    char *text1;
-    char *text2;
-    char *p1 = "AAAC";
-    char *p2 = "BBBD";
+
+    char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,./;\"'<>?";
+    char *text;
+    char *pattern_s = "CCCC";
+    char *pattern_r;
+    
     int nocase = 1;
     int current_state = 0;
+    
+    unsigned char mode = 0;
+    int rand_c = 0;
+    int cache_size = 10485760; 
+    int num_cache = 1;
+    int num_pattern =  1;
 
     cl_ulong start, end, use;
     double band_width;
 
-    int ret_num;
+    int ret;
     int i, j;
-    //int *pcs, cs[] = {MAX_PKT_CACHE_SIZE, 1024 * 1024, 1024 * 128, 10240, 1536, 512, 0};
-    int *pcs, cs[] = {MAX_PKT_CACHE_SIZE, 1024 * 1024, 1024 * 128, 0};
+    int pattern_len;
+
+    
+    while (1) {
+        int option_index = 0;
+        static struct option long_options[] = {
+            {"help",         no_argument,        NULL,  'h' },
+            {"version",      no_argument,        NULL,  'v' },
+            {"mode",         required_argument,  NULL,  'm' },
+            {"device",       required_argument,  NULL,  'd' },
+            {"kernel",       required_argument,  NULL,  'k' },
+            {"random",       no_argument,        NULL,  'r' },
+            {"cache-size",   required_argument,  NULL,  'c' },
+            {"num-cache",    required_argument,  NULL,  'n' },
+            {"patterns",     required_argument,  NULL,  'p' },
+            {0,              0,                  NULL,  0 }
+        };
+
+        ret = getopt_long(argc, argv, "vhm:d:k:rc:n:p:",
+                long_options, &option_index);
+        if (ret == -1)
+            break;
+
+        switch (ret) {
+            case 'm':
+                mode = optarg[0];
+                if ((mode != 'p') && (mode != 't')){
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case 'd':
+                if (optarg[0] == 'c'){
+                    DEVICE_TYPE = CL_DEVICE_TYPE_CPU;
+                } else if (optarg[0] == 'g'){
+                    DEVICE_TYPE = CL_DEVICE_TYPE_GPU;
+                } else {
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case 'k':
+                KERNEL_ID = atoi(optarg);
+                break;
+            case 'r':
+                rand_c = 1;
+                break;
+            case 'c':
+                cache_size = atoi(optarg);
+                break;
+            case 'n':
+                num_cache = atoi(optarg);
+                break;
+            case 'p':
+                num_pattern = atoi(optarg);
+                break;
+            case 'v':
+                printf("Secure Parallel Failureless-AC Alogithm 1.0\n");
+                exit(EXIT_SUCCESS);
+                break;
+            case 'h':
+                usage();
+                exit(EXIT_SUCCESS);
+                break;
+            case 0:
+                fprintf(stderr, "ERROR: unknow arg!\n");
+                exit(EXIT_FAILURE);
+                break;
+            case '?':
+                //fprintf(stderr, "ERROR: unknow arg!\n");
+                //exit(EXIT_FAILURE);
+                break;
+            default:
+                fprintf(stderr, "ERROR: unknow arg!\n");
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if ((mode == 't') && (argc - optind >= 2)){
+        spfac = spfacNew (NULL, NULL, NULL);
+        ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * 2048);
+        aclCheckPointer(acls, text, "text");
+        memset (text, 0, sizeof (char) * 2048);
+        strcpy (text, argv[optind]);
+        optind++;
+
+        while (optind < argc){
+            spfacAddPattern (spfac, argv[optind], strlen(argv[optind]), nocase, 0, 0, 0,
+                (void*)argv[optind], 0);
+            optind++;
+        }
+
+        spfacCompile (spfac, NULL, NULL);
+        Print_DFA(spfac);
+        spfacSearch (spfac, text, sizeof (char) * 2048, MatchFound, NULL, &current_state);
+        free(text);
+        spfacFree (spfac);
+        return (0);
+
+    }
 
     spfac = spfacNew (NULL, NULL, NULL);
+    
+    ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * cache_size);
+    aclCheckPointer(acls, text, "text");
 
-    spfacAddPattern (spfac, p1, strlen (p1), nocase, 0, 0, 0, (void*)p1, 0);
-    spfacAddPattern (spfac, p2, strlen (p2), nocase, 0, 0, 0, (void*)p2, 0);
+    if (rand_c == 1){
+        srand(time(0));
+        for (i = 0; i < (cache_size -1); i++){
+            text[i] =  charset[rand() % strlen(charset)];
+        }
+        text[cache_size -1] = '\0';
+        
+        pattern_r = calloc(num_pattern, 21 * sizeof(char));
+        for (i = 0; i < num_pattern; i++){
+            pattern_len = (int)3 + rand() % 18;
+            for (j = 0; j < pattern_len; j++)
+                pattern_r[i * 21 + j] = charset[rand() % strlen(charset)];
+            pattern_r[i* 21 + pattern_len] = '\0';
+            spfacAddPattern(spfac, (pattern_r + i * 21), pattern_len, 
+                    nocase, 0, 0, 0, (void*)(pattern_r + i * 21), 0);
+        }
+    } else {
+        memset (text, 'A', sizeof (char) * cache_size);
+        spfacAddPattern(spfac, pattern_s, strlen (pattern_s), nocase, 0, 0, 0, (void*)pattern_s, 0);
+    }
 
     spfacCompile (spfac, NULL, NULL);
 
-    ret_num = posix_memalign((void**)&(text1), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
-    aclCheckPointer(acls, text1, "text1");
-    memset (text1, 'A', sizeof (char) * MAX_PKT_CACHE_SIZE);
-
-    ret_num = posix_memalign((void**)&(text2), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
-    aclCheckPointer(acls, text2, "text2");
-    memset (text2, 'B', sizeof (char) * MAX_PKT_CACHE_SIZE);
-    
-    j = cs[0];
-    pcs = cs;
-    while ( j > 0 ){
-        start = aclTimeNanos();
-        for(i = 0; i < (MAX_PKT_CACHE_SIZE / j * 5); i++){
-            spfacSearch (spfac, text1, sizeof (char) * j, MatchFound, NULL, &current_state);
-            spfacSearch (spfac, text2, sizeof (char) * j, MatchFound, NULL, &current_state);
-        }
-        end = aclTimeNanos();
-        use = end - start;
-
-        band_width = 10.0 * 8 / 1024 * MAX_PKT_CACHE_SIZE / 1024 / 1024 / use * 1000000000;
-        printf("Cache size:%8d Byte\tBandwidth:%f Gb/s\n", j, band_width);
-
-        pcs++;
-        j = *pcs;
+    start = aclTimeNanos();
+    for (i = 0; i < num_cache; i++){
+        spfacSearch (spfac, text, cache_size, MatchFound, NULL, &current_state);
     }
+    end = aclTimeNanos();
+    use = end - start;
 
+    band_width = 8.0 * cache_size * num_cache / use * 1000 / 1024 * 1000 / 1024 * 1000 / 1024;
+    printf("Cache size:%8d Byte\tBandwidth:%f Gb/s\n", cache_size, band_width);
+    printf("Num cache:%d\nNum_pattern:%d\n", num_cache, num_pattern);
+
+    free(text);
+    if (rand_c == 1)
+        free(pattern_r);
     spfacFree (spfac);
 
     return 0;
 }
-
-int main (int argc, char **argv)
-{
-    int i, nocase = 0;
-    SPFAC_STRUCT * spfac;
-    char * p;
-    char * text;
-    int ret_num;
-    int current_state = 0;
-
-    if (argc < 2){
-        fprintf (stderr, "Usage: %s -p\n", argv[0]);
-        fprintf (stderr, "Usage: %s text [-n] pattern [patterns...]\n", argv[0]);
-        exit (0);
-    }
-
-    for (i = 1; i < argc; i++){
-        if (strcmp (argv[i], "-p") == 0){
-            mainP();
-            return 0;
-        }
-        if (strcmp (argv[i], "-n") == 0)
-            nocase = 1;
-    }
-
-    spfac = spfacNew (NULL, NULL, NULL);
-    ret_num = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * MAX_PKT_CACHE_SIZE);
-    aclCheckPointer(acls, text, "text");
-    memset (text, 0, sizeof (char) * MAX_PKT_CACHE_SIZE);
-    strcpy (text, argv[1]);
-
-    for (i = 2; i < argc; i++){
-        if (argv[i][0] == '-')
-            continue;
-        p = argv[i];
-
-        spfacAddPattern (spfac, p, strlen (p), nocase, 0, 0, 0,
-                (void*)p, i - 2);
-    }
-
-    spfacCompile (spfac, NULL, NULL);
-    Print_DFA(spfac);
-    spfacSearch (spfac, text, sizeof (char) * MAX_PKT_CACHE_SIZE, MatchFound, NULL, &current_state);
-    spfacFree (spfac);
-    return (0);
-}
-#endif /*  */
+#endif /* SPFAC_MAIN */
 
