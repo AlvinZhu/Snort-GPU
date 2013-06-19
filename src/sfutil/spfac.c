@@ -111,12 +111,12 @@ static void alvinclInit()
         if (strcmp(acls->platform->name, "AMD Accelerated Parallel Processing") == 0){
             //printf("AMD\n");
             acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_ONLY | CL_MEM_USE_PERSISTENT_MEM_AMD, 
+                    CL_MEM_READ_ONLY,
                     SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
 
             acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_WRITE | CL_MEM_USE_PERSISTENT_MEM_AMD, 
+                    CL_MEM_READ_WRITE,
                     (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
 
@@ -145,12 +145,12 @@ static void alvinclInit()
             aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(mem_objects[1])");
         } else {
             acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_ONLY, 
+                    CL_MEM_READ_ONLY,
                     SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
 
             acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_WRITE, 
+                    CL_MEM_READ_WRITE,
                     (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
 
@@ -586,18 +586,18 @@ spfacCompile (SPFAC_STRUCT * spfac,
         //printf("AMD\n");
 
         spfac->mem_object = clCreateBuffer(acls->platform->context,
-                CL_MEM_READ_ONLY | CL_MEM_USE_PERSISTENT_MEM_AMD,
+                CL_MEM_READ_ONLY,
                 sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
 
         ptr_map = clEnqueueMapBuffer(acls->device->command_queue, spfac->mem_object,
-                CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0, 
+                CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
                 sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1),
                 0, NULL, NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(spfac->mem_object)");
     } else {
         spfac->mem_object = clCreateBuffer(acls->platform->context,
-                CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
+                CL_MEM_READ_ONLY,
                 sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
 
