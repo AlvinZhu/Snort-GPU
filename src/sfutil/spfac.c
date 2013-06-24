@@ -111,12 +111,12 @@ static void alvinclInit()
         if (strcmp(acls->platform->name, "AMD Accelerated Parallel Processing") == 0){
             //printf("AMD\n");
             acls->platform->mem_objects[0] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_ONLY,
+                    CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
                     SPFAC_ALPHABET_SIZE * sizeof(unsigned char), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(xlatcase)");
 
             acls->platform->mem_objects[1] = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_WRITE,
+                    CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
                     (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
 
@@ -586,7 +586,7 @@ spfacCompile (SPFAC_STRUCT * spfac,
         //printf("AMD\n");
 
         spfac->mem_object = clCreateBuffer(acls->platform->context,
-                CL_MEM_READ_ONLY,
+                CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
                 sizeof (int) * SPFAC_ALPHABET_SIZE * (spfac->spfacNumStates + 1), NULL, &ret_num);
         aclCheckResult(acls, ret_num, "clCreateBuffer(spfac->mem_object)");
 
@@ -1050,7 +1050,7 @@ int main(int argc, char **argv){
 
     start = aclTimeNanos();
     for (i = 0; i < num_cache; i++){
-        spfacSearch (spfac, text, cache_size, MatchFound, NULL, &current_state);
+        spfacSearch (spfac, text, cache_size, MatchFound2, NULL, &current_state);
     }
     end = aclTimeNanos();
     use = end - start;
