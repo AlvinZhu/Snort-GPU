@@ -148,6 +148,17 @@
 
 #define printf LogMessage
 
+#define ACSMX2S_MAIN
+
+#ifdef ACSMX2S_MAIN
+#include <getopt.h>
+#include <time.h>
+#define MEM_ALIGNMENT			256
+#define MAX_PKT_CACHE_SIZE 10485760   //10M
+#undef printf
+#endif
+
+
 #define MEMASSERT(p,s) if(!p){FatalError("ACSM-No Memory: %s!\n",s);}
 
 static int acsm2_total_memory = 0;
@@ -3042,135 +3053,192 @@ int acsmPrintSummaryInfo2(void)
 
 
 
-
 #ifdef ACSMX2S_MAIN
 
-/*
-*  Text Data Buffer
-*/
-unsigned char text[512];
-
-/*
-*    A Match is found
-*/
- int
-MatchFound (void* id, int index, void *data)
+unsigned long long aclTimeNanos()
 {
-  fprintf (stdout, "%s\n", (char *) id);
-  return 0;
+    struct timespec tp;
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    return (unsigned long long) tp.tv_sec * (1000ULL * 1000ULL * 1000ULL) + (unsigned long long) tp.tv_nsec;
+}
+/*
+ *    A Match is found
+ */
+int MatchFound (void * id, void *tree, int index, void *data, void *neg_list)
+{
+    fprintf (stdout, "%s\n", (char *) id);
+    return 0;
 }
 
-/*
-*
-*/
-int
-main (int argc, char **argv)
+int MatchFound2 (void * id, void *tree, int index, void *data, void *neg_list)
 {
-  int i, nc, nocase = 0;
-  ACSM_STRUCT2 * acsm;
-  char * p;
-
-  if (argc < 3)
-
-    {
-      fprintf (stderr,"Usage: %s search-text pattern +pattern... [flags]\n",argv[0]);
-      fprintf (stderr,"  flags: -nfa -nocase -full -sparse -bands -sparsebands -z zcnt (sparsebands) -sparsetree -v\n");
-      exit (0);
-    }
-
-  acsm = acsmNew2 ();
-  if( !acsm )
-  {
-     printf("acsm-no memory\n");
-     exit(0);
-  }
-
-  strncpy (text, argv[1], sizeof(text) - 1);
-  text[sizeof(text) - 1] = '\0';
-
-  acsm->acsmFormat = ACF_FULL;
-
-  for (i = 1; i < argc; i++)
-  {
-    if (strcmp (argv[i], "-nocase") == 0){
-      nocase = 1;
-    }
-    if (strcmp (argv[i], "-v") == 0){
-      s_verbose=1;
-    }
-
-    if (strcmp (argv[i], "-full") == 0){
-       acsm->acsmFormat            = ACF_FULL;
-    }
-    if (strcmp (argv[i], "-fullq") == 0){
-       acsm->acsmFormat            = ACF_FULLQ;
-    }
-    if (strcmp (argv[i], "-sparse") == 0){
-       acsm->acsmFormat            = ACF_SPARSE;
-       acsm->acsmSparseMaxRowNodes = 10;
-    }
-    if (strcmp (argv[i], "-bands") == 0){
-       acsm->acsmFormat            = ACF_BANDED;
-    }
-
-    if (strcmp (argv[i], "-sparsebands") == 0){
-       acsm->acsmFormat            = ACF_SPARSEBANDS;
-       acsm->acsmSparseMaxZcnt     = 10;
-    }
-    if (strcmp (argv[i], "-z") == 0){
-       acsm->acsmSparseMaxZcnt     = atoi(argv[++i]);
-    }
-
-    if (strcmp (argv[i], "-nfa") == 0){
-       acsm->acsmFSA     = FSA_NFA;
-    }
-    if (strcmp (argv[i], "-dfa") == 0){
-       acsm->acsmFSA     = FSA_DFA;
-    }
-    if (strcmp (argv[i], "-trie") == 0){
-       acsm->acsmFSA     = FSA_TRIE;
-    }
-  }
-
-  for (i = 2; i < argc; i++)
-  {
-      if (argv[i][0] == '-')
-          continue;
-
-      p = argv[i];
-
-      if ( *p == '+')
-      {
-          nc=1;
-          p++;
-      }
-      else
-      {
-          nc = nocase;
-      }
-
-      acsmAddPattern2 (acsm, p, strlen(p), nc, 0, 0,(void*)p, i - 2);
-  }
-
-  if(s_verbose)printf("Patterns added\n");
-
-  Print_DFA (acsm);
-
-  acsmCompile2 (acsm);
-
-  Write_DFA(acsm, "acsmx2-snort.dfa") ;
-
-  if(s_verbose) printf("Patterns compiled--written to file.\n");
-
-  acsmPrintInfo2 ( acsm );
-
-  acsmSearch2 (acsm, text, strlen (text), MatchFound, (void *)0 );
-
-  acsmFree2 (acsm);
-
-  printf ("normal pgm end\n");
-
-  return (0);
+    //fprintf (stdout, "%s\n", (char *) id);
+    return 0;
 }
-#endif /*  */
 
+void usage()
+{
+    printf("Usage: --help\n");
+    printf("   or: --version\n");
+    printf("   or: --mode=test text pattern [pattern...]\n");
+    printf("   or: --mode=profiling\n");
+    printf("       [--random]\n");
+    printf("       [--cache-size=SIZE] [--num-cache=NUM] [--patterns=NUM]\n");
+}
+/*
+ *
+ */
+ 
+int main(int argc, char **argv){
+    ACSM_STRUCT2 * acsm;
+
+    char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,./;\"'<>?";
+    char *text;
+    char *pattern_s = "CCCC";
+    char *pattern_r;
+    
+    int nocase = 1;
+    int current_state = 0;
+    
+    unsigned char mode = 0;
+    int rand_c = 0;
+    int cache_size = 10485760; 
+    int num_cache = 1;
+    int num_pattern =  1;
+
+    unsigned long long start, end, use;
+    double band_width;
+
+    int ret;
+    int i, j;
+    int pattern_len;
+
+    acsm = acsmNew2 (NULL, NULL, NULL);
+    acsm->acsmFormat = ACF_FULL;
+
+    while (1) {
+        int option_index = 0;
+        static struct option long_options[] = {
+            {"help",         no_argument,        NULL,  'h' },
+            {"version",      no_argument,        NULL,  'v' },
+            {"mode",         required_argument,  NULL,  'm' },
+            {"random",       no_argument,        NULL,  'r' },
+            {"cache-size",   required_argument,  NULL,  'c' },
+            {"num-cache",    required_argument,  NULL,  'n' },
+            {"patterns",     required_argument,  NULL,  'p' },
+            {0,              0,                  NULL,  0 }
+        };
+
+        ret = getopt_long(argc, argv, "vhm:rc:n:p:",
+                long_options, &option_index);
+        if (ret == -1)
+            break;
+
+        switch (ret) {
+            case 'm':
+                mode = optarg[0];
+                if ((mode != 'p') && (mode != 't')){
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            case 'r':
+                rand_c = 1;
+                break;
+            case 'c':
+                cache_size = atoi(optarg);
+                break;
+            case 'n':
+                num_cache = atoi(optarg);
+                break;
+            case 'p':
+                num_pattern = atoi(optarg);
+                break;
+            case 'v':
+                printf("Secure Parallel Failureless-AC Alogithm 1.0\n");
+                exit(EXIT_SUCCESS);
+                break;
+            case 'h':
+                usage();
+                exit(EXIT_SUCCESS);
+                break;
+            case 0:
+                fprintf(stderr, "ERROR: unknow arg!\n");
+                exit(EXIT_FAILURE);
+                break;
+            case '?':
+                //fprintf(stderr, "ERROR: unknow arg!\n");
+                //exit(EXIT_FAILURE);
+                break;
+            default:
+                fprintf(stderr, "ERROR: unknow arg!\n");
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if ((mode == 't') && (argc - optind >= 2)){
+        ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * 2048);
+        MEMASSERT (text, "text");
+        memset (text, 0, sizeof (char) * 2048);
+        strcpy (text, argv[optind]);
+        optind++;
+
+        while (optind < argc){
+            acsmAddPattern2 (acsm, argv[optind], strlen(argv[optind]), nocase, 0, 0, 0,
+                (void*)argv[optind], 0);
+            optind++;
+        }
+
+        acsmCompile2 (acsm, NULL, NULL);
+        //Print_DFA(acsm);
+        acsmSearch2 (acsm, text, sizeof (char) * 2048, MatchFound, NULL, &current_state);
+        free(text);
+        acsmFree2 (acsm);
+        return (0);
+
+    }
+    
+    ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * cache_size);
+    MEMASSERT (text, "text");
+
+    if (rand_c == 1){
+        srand(time(0));
+        for (i = 0; i < (cache_size -1); i++){
+            text[i] =  charset[rand() % strlen(charset)];
+        }
+        text[cache_size -1] = '\0';
+        
+        pattern_r = calloc(num_pattern, 21 * sizeof(char));
+        for (i = 0; i < num_pattern; i++){
+            pattern_len = (int)3 + rand() % 18;
+            for (j = 0; j < pattern_len; j++)
+                pattern_r[i * 21 + j] = charset[rand() % strlen(charset)];
+            pattern_r[i* 21 + pattern_len] = '\0';
+            acsmAddPattern2(acsm, (pattern_r + i * 21), pattern_len, 
+                    nocase, 0, 0, 0, (void*)(pattern_r + i * 21), 0);
+        }
+    } else {
+        memset (text, 'A', sizeof (char) * cache_size);
+        acsmAddPattern2(acsm, pattern_s, strlen (pattern_s), nocase, 0, 0, 0, (void*)pattern_s, 0);
+    }
+
+    acsmCompile2 (acsm, NULL, NULL);
+
+    start = aclTimeNanos();
+    for (i = 0; i < num_cache; i++){
+        acsmSearch2 (acsm, text, cache_size, MatchFound2, NULL, &current_state);
+    }
+    end = aclTimeNanos();
+    use = end - start;
+
+    band_width = 8.0 * cache_size * num_cache / use * 1000 / 1024 * 1000 / 1024 * 1000 / 1024;
+    printf("Cache size:%8d Byte\tBandwidth:%f Gb/s\n", cache_size, band_width);
+    printf("Num cache:%d\nNum_pattern:%d\n", num_cache, num_pattern);
+
+    free(text);
+    if (rand_c == 1)
+        free(pattern_r);
+    acsmFree2 (acsm);
+
+    return 0;
+}
+#endif /* ACSMX2S_MAIN */

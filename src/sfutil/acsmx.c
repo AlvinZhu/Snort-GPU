@@ -64,8 +64,6 @@
 #include "config.h"
 #endif
 
-#include <getopt.h>
-#include <time.h>
 
 #include "acsmx.h"
 #include "util.h"
@@ -77,7 +75,14 @@
 static int max_memory = 0;
 #endif
 
+//#define AC_MAIN
+
+#ifdef AC_MAIN
+#include <time.h>
+#include <getopt.h>
 #define MEM_ALIGNMENT			256
+#endif
+
 #define MAX_PKT_CACHE_SIZE 10485760   //10M
 
 /*static void Print_DFA( ACSM_STRUCT * acsm );*/
@@ -792,8 +797,6 @@ int acsmPrintSummaryInfo(void)
     return 0;
 }
 
-
-#define AC_MAIN
 #ifdef AC_MAIN
 
 unsigned long long aclTimeNanos()
@@ -914,8 +917,9 @@ int main(int argc, char **argv){
         }
     }
 
+    acsm = acsmNew (NULL, NULL, NULL);
+
     if ((mode == 't') && (argc - optind >= 2)){
-        acsm = acsmNew (NULL, NULL, NULL);
         ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * 2048);
         MEMASSERT (text, "text");
         memset (text, 0, sizeof (char) * 2048);
@@ -937,8 +941,6 @@ int main(int argc, char **argv){
 
     }
 
-    acsm = acsmNew (NULL, NULL, NULL);
-    
     ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * cache_size);
     MEMASSERT (text, "text");
 
