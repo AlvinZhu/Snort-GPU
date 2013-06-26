@@ -9,10 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <getopt.h>
-
-#include <time.h>
-#include "alvincl.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -22,12 +18,19 @@
 #include "util.h"
 #include "snort_debug.h"
 
+#define SPFAC_MAIN
+
+#ifdef SPFAC_MAIN
+#include <getopt.h>
+#include <time.h>
+#endif
+
+#include "alvincl.h"
 #define MEM_ALIGNMENT			256
-//#define DEVICE_TYPE				CL_DEVICE_TYPE_GPU
+#define MAX_PKT_CACHE_SIZE 10485760   //10M
+
 static cl_device_type DEVICE_TYPE = CL_DEVICE_TYPE_GPU;
 static int KERNEL_ID = 1;
-
-#define MAX_PKT_CACHE_SIZE 10485760   //10M
 
 #ifdef DEBUG_SPFAC
 static int max_memory = 0;
@@ -635,7 +638,7 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     int nfound = 0, nr;
     SPFAC_PATTERN ** MatchList = spfac->MatchList;
     int n_cl = (n % 64) ? (n / 64 + 1) * 64 : n;
-    n_cl /= 32;
+    n_cl /= 16;
     int * result;
     int * presult;
     int index;
@@ -868,20 +871,17 @@ int spfacPrintSummaryInfo(void)
     return 0;
 }
 
-#define SPFAC_MAIN
 #ifdef SPFAC_MAIN
 
 /*
  *    A Match is found
  */
-    int
-MatchFound (void * id, void *tree, int index, void *data, void *neg_list)
+int MatchFound (void * id, void *tree, int index, void *data, void *neg_list)
 {
     fprintf (stdout, "%s\n", (char *) id);
     return 0;
 }
-
-MatchFound2 (void * id, void *tree, int index, void *data, void *neg_list)
+int MatchFound2 (void * id, void *tree, int index, void *data, void *neg_list)
 {
     //fprintf (stdout, "%s\n", (char *) id);
     return 0;
@@ -997,8 +997,9 @@ int main(int argc, char **argv){
         }
     }
 
+    spfac = spfacNew (NULL, NULL, NULL);
+
     if ((mode == 't') && (argc - optind >= 2)){
-        spfac = spfacNew (NULL, NULL, NULL);
         ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * 2048);
         aclCheckPointer(acls, text, "text");
         memset (text, 0, sizeof (char) * 2048);
@@ -1019,8 +1020,6 @@ int main(int argc, char **argv){
         return (0);
 
     }
-
-    spfac = spfacNew (NULL, NULL, NULL);
     
     ret = posix_memalign((void**)&(text), MEM_ALIGNMENT, sizeof (char) * cache_size);
     aclCheckPointer(acls, text, "text");
