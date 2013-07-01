@@ -673,7 +673,7 @@ static int InlineFailOpen (void)
  * Returns: 0 => normal exit, 1 => exit on error
  *
  */
-int Omain(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 #if defined(WIN32) && defined(ENABLE_WIN32_SERVICE)
     /* Do some sanity checking, because some people seem to forget to

@@ -18,7 +18,7 @@
 #include "util.h"
 #include "snort_debug.h"
 
-#define SPFAC_MAIN
+//#define SPFAC_MAIN
 
 #ifdef SPFAC_MAIN
 #include <getopt.h>
@@ -27,16 +27,18 @@
 
 #include "alvincl.h"
 #define MEM_ALIGNMENT			256
-#define MAX_PKT_CACHE_SIZE 10485760   //10M
+//#define MAX_PKT_CACHE_SIZE 10485760   //10M
+#define MAX_PKT_CACHE_SIZE 2048   //10M
 
 static cl_device_type DEVICE_TYPE = CL_DEVICE_TYPE_GPU;
-static int KERNEL_ID = 1;
+static int KERNEL_ID = 6;
 
 #ifdef DEBUG_SPFAC
 static int max_memory = 0;
 #endif
 
 static acl_struct * acls = NULL;
+static int * acls_ref_count = 0;
 
 static void* spfacMalloc(size_t n){
     void *p = NULL;
@@ -95,6 +97,8 @@ static void alvinclInit()
     cl_int ret_num;
     int * result;
     unsigned char *clxlatcase = xlatcase;
+
+    acls_ref_count++;
 
     if(acls == NULL){
         acls = (acl_struct*)spfacMalloc(sizeof(acl_struct));
@@ -193,7 +197,9 @@ static void alvinclInit()
 }
 
 static void alvinclFree(){
-    if (acls != NULL){
+    acls_ref_count--;
+
+    if ((acls_ref_count == 0) && (acls != NULL)){
         aclCleanUp(acls);
         spfacUnMalloc((void*)acls);
         acls = NULL;
@@ -637,7 +643,7 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     SPFAC_PATTERN * mlist;
     int nfound = 0, nr;
     SPFAC_PATTERN ** MatchList = spfac->MatchList;
-    int n_cl = (n % 64) ? (n / 64 + 1) * 64 : n;
+    int n_cl = (n % 1024) ? (n / 1024 + 1) * 1024 : n;
     n_cl /= 16;
     int * result;
     int * presult;
@@ -740,7 +746,11 @@ spfacFree (SPFAC_STRUCT * spfac)
     SPFAC_PATTERN * mlist, *ilist;
     for (i = 0; i < spfac->spfacNumStates + 1; i++)
     {
-        mlist = spfac->MatchList[i];
+        if (spfac->MatchList)
+            mlist = spfac->MatchList[i];
+        else
+            mlist = NULL;
+
         while (mlist)
         {
             ilist = mlist;
