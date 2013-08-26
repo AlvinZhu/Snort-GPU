@@ -35,6 +35,7 @@ static int max_memory = 0;
 #endif
 
 static acl_struct * acls = NULL;
+static RNODE * acl_ring = NULL;
 static int * acls_ref_count = 0;
 
 static void* spfacMalloc(size_t n){
@@ -208,65 +209,69 @@ static void ring_init(SPFAC_STRUCT * spfac)
 {
     int i;
     cl_int ret_num;
+    
+    if (acl_ring == NULL) {
+        acl_ring = (RNODE*)spfacMalloc(sizeof(RNODE) * NUM_RNODE);
+         for (i = 0; i < NUM_RNODE; i++) {
+             acl_ring[i].cache = clCreateBuffer(acls->platform->context,
+                     CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+                     MAX_PKT_CACHE_SIZE * sizeof(unsigned char), NULL, &ret_num);
+             aclCheckResult(acls, ret_num, "clCreateBuffer(cache)");
+        
+             acl_ring[i].result = clCreateBuffer(acls->platform->context,
+                     CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+                     (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
+             aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
 
-    spfac->acl_ring = (RNODE*)spfacMalloc(sizeof(RNODE) * NUM_RNODE);
+             acl_ring[i].p_cache = clEnqueueMapBuffer(acls->device->command_queue,
+                     acl_ring[i].cache,
+                     CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
+                     MAX_PKT_CACHE_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+             aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(cache)1");
+             memset (acl_ring[i].p_cache, 0, MAX_PKT_CACHE_SIZE * sizeof(unsigned char));
+
+             acl_ring[i].p_result = clEnqueueMapBuffer(acls->device->command_queue,
+                     acl_ring[i].result,
+                     CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
+                     (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
+             aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)1");
+             memset (acl_ring[i].p_result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
+
+             acl_ring[i].next = acl_ring + (i + 1) % NUM_RNODE;
+         }
+    }
+    spfac->acl_ring = acl_ring;
     spfac->p_ring_cpu = spfac->acl_ring;
     spfac->p_ring_gpu = spfac->acl_ring;
-    for (i = 0; i < NUM_RNODE; i++) {
-        (spfac->acl_ring)[i].cache = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-                    MAX_PKT_CACHE_SIZE * sizeof(unsigned char), NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clCreateBuffer(cache)");
-        
-        (spfac->acl_ring)[i].result = clCreateBuffer(acls->platform->context,
-                    CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-                    (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clCreateBuffer(result)");
-
-        (spfac->acl_ring)[i].p_cache = clEnqueueMapBuffer(acls->device->command_queue,
-                (spfac->acl_ring)[i].cache,
-                CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
-                MAX_PKT_CACHE_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(cache)1");
-        memset ((spfac->acl_ring)[i].p_cache, 0, MAX_PKT_CACHE_SIZE * sizeof(unsigned char));
-
-        (spfac->acl_ring)[i].p_result = clEnqueueMapBuffer(acls->device->command_queue,
-                (spfac->acl_ring)[i].result,
-                CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
-                (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int), 0, NULL, NULL, &ret_num);
-        aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)1");
-        memset ((spfac->acl_ring)[i].p_result, 0, (2 * MAX_PKT_CACHE_SIZE + 1) * sizeof(int));
-
-        (spfac->acl_ring)[i].next = (spfac->acl_ring) + (i + 1) % NUM_RNODE;
-    }
 }
 
 static void ring_free(SPFAC_STRUCT * spfac)
 {
     int i;
     cl_int ret_num;
+    if ((acls_ref_count == 0) && (acl_ring != NULL)){
+        for (i = 0; i < NUM_RNODE; i++) {
+            if ((spfac->acl_ring)[i].p_cache != NULL) {
+                ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                        (spfac->acl_ring)[i].cache, (spfac->acl_ring)[i].p_cache, 0, NULL, NULL);
+                aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)");
+                (spfac->acl_ring)[i].p_cache = NULL;
+            }
+            if ((spfac->acl_ring)[i].p_result != NULL) {
+                ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                        (spfac->acl_ring)[i].result, (spfac->acl_ring)[i].p_result, 0, NULL, NULL);
+                aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)");
+                (spfac->acl_ring)[i].p_result = NULL;
+            }
+            if((spfac->acl_ring)[i].cache != 0)
+                clReleaseMemObject((spfac->acl_ring)[i].cache);
+            if((spfac->acl_ring)[i].result != 0)
+                clReleaseMemObject((spfac->acl_ring)[i].result);
+        }
 
-    for (i = 0; i < NUM_RNODE; i++) {
-        if ((spfac->acl_ring)[i].p_cache != NULL) {
-            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
-                    (spfac->acl_ring)[i].cache, (spfac->acl_ring)[i].p_cache, 0, NULL, NULL);
-            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)");
-            (spfac->acl_ring)[i].p_cache = NULL;
-        }
-        if ((spfac->acl_ring)[i].p_result != NULL) {
-            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
-                    (spfac->acl_ring)[i].result, (spfac->acl_ring)[i].p_result, 0, NULL, NULL);
-            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)");
-            (spfac->acl_ring)[i].p_result = NULL;
-        }
-    if((spfac->acl_ring)[i].cache != 0)
-        clReleaseMemObject((spfac->acl_ring)[i].cache);
-    if((spfac->acl_ring)[i].result != 0)
-        clReleaseMemObject((spfac->acl_ring)[i].result);
+        spfacUnMalloc((void*)(spfac->acl_ring));
+        spfac->acl_ring = NULL;
     }
-
-    spfacUnMalloc((void*)(spfac->acl_ring));
-    spfac->acl_ring = NULL;
 }
 
 /*
