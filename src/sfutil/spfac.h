@@ -21,9 +21,26 @@
  */
 
 
-#define SPFAC_ALPHABET_SIZE    256          
+#define SPFAC_ALPHABET_SIZE 256
 
-#define SPFAC_FAIL_STATE   0     
+#define SPFAC_FAIL_STATE    0
+
+#define MEM_ALIGNMENT		256
+#define MAX_PKT_CACHE_SIZE  10485760   //1M
+#define NUM_RNODE           2
+
+/*
+ *  Ring
+*/
+typedef struct _rnode {
+    cl_mem cache;
+    cl_mem result;
+    unsigned char *p_cache;
+    int *p_result;
+    int c_count;
+    cl_event kernel_event;
+    struct _rnode *next;
+} RNODE;
 
 typedef struct _spfac_userdata{
     uint32_t ref_count;
@@ -56,6 +73,9 @@ typedef struct{
     SPFAC_PATTERN *spfacPatterns;
     int *spfacStateTable;
     cl_mem mem_object;
+    RNODE *acl_ring;
+    RNODE *p_ring_cpu;
+    RNODE *p_ring_gpu;
     SPFAC_PATTERN **MatchList;
 
     int numPatterns;
