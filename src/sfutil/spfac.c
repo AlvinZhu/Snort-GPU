@@ -35,8 +35,9 @@ static int max_memory = 0;
 #endif
 
 static acl_struct * acls = NULL;
+static int acls_ref_count = 0;
 static RNODE * acl_ring = NULL;
-static int * acls_ref_count = 0;
+static int acl_ring_ref_count = 0;
 
 static void* spfacMalloc(size_t n){
     void *p = NULL;
@@ -209,13 +210,14 @@ static void ring_init(SPFAC_STRUCT * spfac)
 {
     int i;
     cl_int ret_num;
+    acl_ring_ref_count++;
     
     if (acl_ring == NULL) {
         acl_ring = (RNODE*)spfacMalloc(sizeof(RNODE) * NUM_RNODE);
          for (i = 0; i < NUM_RNODE; i++) {
              acl_ring[i].cache = clCreateBuffer(acls->platform->context,
                      CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-                     MAX_PKT_CACHE_SIZE * sizeof(unsigned char), NULL, &ret_num);
+                     (MAX_PKT_CACHE_SIZE + GROUP_SIZE) * sizeof(unsigned char), NULL, &ret_num);
              aclCheckResult(acls, ret_num, "clCreateBuffer(cache)");
         
              acl_ring[i].result = clCreateBuffer(acls->platform->context,
@@ -226,9 +228,11 @@ static void ring_init(SPFAC_STRUCT * spfac)
              acl_ring[i].p_cache = clEnqueueMapBuffer(acls->device->command_queue,
                      acl_ring[i].cache,
                      CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, 0,
-                     MAX_PKT_CACHE_SIZE * sizeof(unsigned char), 0, NULL, NULL, &ret_num);
+                     (MAX_PKT_CACHE_SIZE + GROUP_SIZE) * sizeof(unsigned char),
+                     0, NULL, NULL, &ret_num);
              aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(cache)1");
-             memset (acl_ring[i].p_cache, 0, MAX_PKT_CACHE_SIZE * sizeof(unsigned char));
+             memset (acl_ring[i].p_cache, 0,
+                     (MAX_PKT_CACHE_SIZE + GROUP_SIZE) * sizeof(unsigned char));
 
              acl_ring[i].p_result = clEnqueueMapBuffer(acls->device->command_queue,
                      acl_ring[i].result,
@@ -249,7 +253,10 @@ static void ring_free(SPFAC_STRUCT * spfac)
 {
     int i;
     cl_int ret_num;
-    if ((acls_ref_count == 0) && (acl_ring != NULL)){
+    
+    acl_ring_ref_count--;
+
+    if ((acl_ring_ref_count == 0) && (acl_ring != NULL)){
         for (i = 0; i < NUM_RNODE; i++) {
             if ((spfac->acl_ring)[i].p_cache != NULL) {
                 ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
@@ -698,25 +705,19 @@ spfacCompile (SPFAC_STRUCT * spfac,
 
 #define SPFAC_GPU_RUN(P_RING_GPU)\
     do { \
-        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, \
-                (P_RING_GPU)->cache, (P_RING_GPU)->p_cache, \
-                0, NULL, NULL); \
-        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)"); \
-        (P_RING_GPU)->p_cache = NULL; \
-        ret_num = clEnqueueUnmapMemObject(acls->device->command_queue, \
-                (P_RING_GPU)->result, (P_RING_GPU)->p_result, \
-                0, NULL, NULL); \
-        aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)"); \
-        (P_RING_GPU)->p_result = NULL; \
         ret_num = clSetKernelArg(acls->platform->kernel, 1, \
                 sizeof(cl_mem), &((P_RING_GPU)->result)); \
         aclCheckResult(acls, ret_num, "clSetKernelArg(1)"); \
         ret_num = clSetKernelArg(acls->platform->kernel, 2, \
                 sizeof(cl_mem), &((P_RING_GPU)->cache)); \
         aclCheckResult(acls, ret_num, "clSetKernelArg(2)"); \
+        ret_num = clSetKernelArg(acls->platform->kernel, 3, \
+                sizeof(cl_mem), &(spfac->mem_object)); \
+        aclCheckResult(acls, ret_num, "clSetKernelArg(3)"); \
         ret_num = clEnqueueNDRangeKernel(acls->device->command_queue, \
                 acls->platform->kernel, 1, NULL, \
-                global_work_group_size, local_work_group_size, 0, NULL, NULL); \
+                global_work_group_size, local_work_group_size, \
+                0, NULL, &((P_RING_GPU)->kernel_event)); \
         aclCheckResult(acls, ret_num, "clEnqueueNDRangeKernel"); \
     } while(0)
 
@@ -756,18 +757,29 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
     int * presult;
     int index;
     //cl_mem mem_object;
-    size_t global_work_group_size[1] = { MAX_PKT_CACHE_SIZE };
+    size_t global_work_group_size[1] = { MAX_PKT_CACHE_SIZE / UNROLL_SIZE };
     size_t local_work_group_size[1] = { 64 };
 
     cl_int ret_num, cmd_status;
-
-    ret_num = clSetKernelArg(acls->platform->kernel, 3, sizeof(cl_mem), &(spfac->mem_object));
-    aclCheckResult(acls, ret_num, "clSetKernelArg(3)");
-
+    
     if (spfac->p_ring_gpu->c_count == MAX_PKT_CACHE_SIZE) {
         if (spfac->p_ring_gpu->kernel_event == NULL) {
             //
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    spfac->p_ring_gpu->cache, spfac->p_ring_gpu->p_cache,
+                    0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)");
+            spfac->p_ring_gpu->p_cache = NULL;
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    spfac->p_ring_gpu->result, spfac->p_ring_gpu->p_result,
+                    0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)");
+            spfac->p_ring_gpu->p_result = NULL;
+
             SPFAC_GPU_RUN(spfac->p_ring_gpu);
+            //test
+            //spfac->p_ring_gpu->c_count = 0;
+            //spfac->p_ring_gpu = spfac->p_ring_gpu->next;
         } else {
             ret_num = clGetEventInfo(
                     spfac->p_ring_gpu->kernel_event,
@@ -783,7 +795,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
 
                 spfac->p_ring_gpu->p_result = clEnqueueMapBuffer(acls->device->command_queue,
                         spfac->p_ring_gpu->result,
-                        CL_TRUE, CL_MAP_WRITE, 0, (11) * sizeof(int), 0, NULL, NULL, &ret_num);
+                        CL_TRUE, CL_MAP_WRITE, 0,
+                        (11) * sizeof(int), 0, NULL, NULL, &ret_num);
                 aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)");
 
                 nr = (spfac->p_ring_gpu->p_result)[0];
@@ -800,6 +813,17 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
                     aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)");
                 }
                 //
+                ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                        spfac->p_ring_gpu->next->cache, spfac->p_ring_gpu->next->p_cache,
+                        0, NULL, NULL);
+                aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)");
+                spfac->p_ring_gpu->next->p_cache = NULL;
+                ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                        spfac->p_ring_gpu->next->result, spfac->p_ring_gpu->next->p_result,
+                        0, NULL, NULL);
+                aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)");
+                spfac->p_ring_gpu->next->p_result = NULL;
+
                 SPFAC_GPU_RUN(spfac->p_ring_gpu->next);
                 
                 ret_num = clReleaseEvent(spfac->p_ring_gpu->kernel_event);
@@ -819,7 +843,7 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
         }
     }
 
-    if (spfac->p_ring_cpu->c_count + n < MAX_PKT_CACHE_SIZE) {
+    if (spfac->p_ring_cpu->c_count + n <= MAX_PKT_CACHE_SIZE) {
         memcpy((spfac->p_ring_cpu->p_cache) + (spfac->p_ring_cpu->c_count),
                 Tx, n * sizeof(unsigned char));
         spfac->p_ring_cpu->c_count += n;
@@ -845,7 +869,8 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
             
             spfac->p_ring_gpu->p_result = clEnqueueMapBuffer(acls->device->command_queue,
                     spfac->p_ring_gpu->result,
-                    CL_TRUE, CL_MAP_WRITE, 0, (11) * sizeof(int), 0, NULL, NULL, &ret_num);
+                    CL_TRUE, CL_MAP_WRITE, 0,
+                    (11) * sizeof(int), 0, NULL, NULL, &ret_num);
             aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)");
 
             nr = (spfac->p_ring_gpu->p_result)[0];
@@ -862,8 +887,18 @@ spfacSearch (SPFAC_STRUCT * spfac, unsigned char *Tx, int n,
                         0, NULL, NULL, &ret_num);
                 aclCheckResult(acls, ret_num, "clEnqueueMapBuffer(result)");
             }
-
-            SPFAC_GPU_RUN(spfac->p_ring_gpu->next);
+/*            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    spfac->p_ring_gpu->next->cache, spfac->p_ring_gpu->next->p_cache,
+                    0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(cache)");
+            spfac->p_ring_gpu->next->p_cache = NULL;
+            ret_num = clEnqueueUnmapMemObject(acls->device->command_queue,
+                    spfac->p_ring_gpu->next->result, spfac->p_ring_gpu->next->p_result,
+                    0, NULL, NULL);
+            aclCheckResult(acls, ret_num, "clEnqueueUnmapBuffer(result)");
+            spfac->p_ring_gpu->next->p_result = NULL;
+*/
+            //SPFAC_GPU_RUN(spfac->p_ring_gpu->next);
 
             ret_num = clReleaseEvent(spfac->p_ring_gpu->kernel_event);
             aclCheckResult(acls, ret_num, "clReleaseEvent((kernel_event)");
@@ -1211,6 +1246,7 @@ int main(int argc, char **argv){
     for (i = 0; i < num_cache; i++){
         spfacSearch (spfac, text, cache_size, MatchFound2, NULL, &current_state);
     }
+    clFinish(acls->device->command_queue);
     end = aclTimeNanos();
     use = end - start;
 

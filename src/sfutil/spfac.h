@@ -26,7 +26,9 @@
 #define SPFAC_FAIL_STATE    0
 
 #define MEM_ALIGNMENT		256
-#define MAX_PKT_CACHE_SIZE  10485760   //1M
+#define MAX_PKT_CACHE_SIZE  10485760   //10M
+#define GROUP_SIZE          64
+#define UNROLL_SIZE         16
 #define NUM_RNODE           2
 
 /*
